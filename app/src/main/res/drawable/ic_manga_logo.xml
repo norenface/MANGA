@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+
+    <!-- 背景円 -->
+    <path
+        android:pathData="M60,60m-55,0a55,55 0,1 1,110 0a55,55 0,1 1,-110 0"
+        android:fillColor="#E53935" />
+
+    <!-- 本のアイコン -->
+    <path
+        android:pathData="M30,30 L30,90 L90,90 L90,30 Z"
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2" />
+    <path
+        android:pathData="M40,30 L40,90"
+        android:fillColor="#00000000"
+        android:strokeColor="#E53935"
+        android:strokeWidth="3" />
+    <path
+        android:pathData="M48,45 L80,45"
+        android:strokeColor="#E53935"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M48,55 L80,55"
+        android:strokeColor="#E53935"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M48,65 L70,65"
+        android:strokeColor="#E53935"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round" />
+
+    <!-- JA テキスト -->
+    <path
+        android:pathData="M53,72 L57,82 L61,72"
+        android:fillColor="#00000000"
+        android:strokeColor="#E53935"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M65,72 L65,82 M62,75 L68,75"
+        android:fillColor="#00000000"
+        android:strokeColor="#E53935"
+        android:strokeWidth="2"
+        android:strokeLineCap="round" />
+
+</vector>
