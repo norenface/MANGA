@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,6 +22,7 @@ import com.manga.translator.ui.TranslatedImageView
 import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.Executors
 
 class ReaderActivity : Activity() {
 
@@ -33,6 +33,11 @@ class ReaderActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var ocrEngine: TesseractOcrEngine
+
+    // 画像ダウンロード用 (最大3並列)
+    private val downloadExecutor = Executors.newFixedThreadPool(3)
+    // OCR処理は直列 (TessBaseAPI はスレッドアンセーフのため)
+    private val ocrExecutor = Executors.newSingleThreadExecutor()
 
     private lateinit var scrollView: ScrollView
     private lateinit var pageContainer: LinearLayout
@@ -47,8 +52,9 @@ class ReaderActivity : Activity() {
     private lateinit var extractorWebView: WebView
 
     private var episodeNo = 1
-    private val pageViews = mutableListOf<TranslatedImageView>()
+    private val pageViews = ArrayList<TranslatedImageView>()
     private var overlaysVisible = true
+    private var urlsCallbackRegistered = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,25 +62,73 @@ class ReaderActivity : Activity() {
 
         episodeNo = intent.getIntExtra(EXTRA_EPISODE, 1)
 
-        scrollView       = findViewById(R.id.scrollView)       as ScrollView
-        pageContainer    = findViewById(R.id.pageContainer)    as LinearLayout
-        loadingView      = findViewById(R.id.loadingView)
-        tvLoadingStatus  = findViewById(R.id.tvLoadingStatus)  as TextView
-        navBar           = findViewById(R.id.navBar)
-        tvTitle          = findViewById(R.id.tvTitle)          as TextView
-        btnClose         = findViewById(R.id.btnClose)         as Button
-        btnPrev          = findViewById(R.id.btnPrev)          as Button
-        btnNext          = findViewById(R.id.btnNext)          as Button
-        btnToggleOcr     = findViewById(R.id.btnToggleOcr)     as Button
+        scrollView      = findViewById(R.id.scrollView)      as ScrollView
+        pageContainer   = findViewById(R.id.pageContainer)   as LinearLayout
+        loadingView     = findViewById(R.id.loadingView)
+        tvLoadingStatus = findViewById(R.id.tvLoadingStatus) as TextView
+        navBar          = findViewById(R.id.navBar)
+        tvTitle         = findViewById(R.id.tvTitle)         as TextView
+        btnClose        = findViewById(R.id.btnClose)        as Button
+        btnPrev         = findViewById(R.id.btnPrev)         as Button
+        btnNext         = findViewById(R.id.btnNext)         as Button
+        btnToggleOcr    = findViewById(R.id.btnToggleOcr)    as Button
 
-        // 画像URL抽出用の非表示WebView
-        extractorWebView = WebView(this)
-
+        setupExtractorWebView()
         ocrEngine = TesseractOcrEngine(this)
 
         setupControls()
         initTesseract()
         loadEpisode(episodeNo)
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setupExtractorWebView() {
+        extractorWebView = WebView(this)
+        extractorWebView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0 Mobile Safari/537.36"
+        }
+        // JavascriptInterface は一度だけ登録する
+        extractorWebView.addJavascriptInterface(object : Any() {
+            @JavascriptInterface
+            fun onUrls(json: String) {
+                try {
+                    val arr = JSONArray(json)
+                    val urls = ArrayList<String>()
+                    var i = 0
+                    while (i < arr.length()) { urls.add(arr.getString(i)); i++ }
+                    if (urls.isNotEmpty()) {
+                        mainHandler.post { startLoadingPages(urls) }
+                    } else {
+                        mainHandler.post { updateStatus("画像URLが見つかりませんでした") }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "URL parse error: ${e.message}")
+                }
+            }
+        }, "Android")
+
+        extractorWebView.setWebViewClient(object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                view.postDelayed({
+                    val js = "javascript:(function(){" +
+                        "var found=[];" +
+                        "function add(s){document.querySelectorAll(s).forEach(function(img){" +
+                        "  var src=img.src||img.getAttribute('data-src')||'';" +
+                        "  if(src.indexOf('image-comic.pstatic.net')>-1&&found.indexOf(src)<0)found.push(src);" +
+                        "})}" +
+                        "add('img[src*=\"image-comic.pstatic.net\"]');" +
+                        "add('#comic_view_area img');add('.viewer_lst img');add('._img');" +
+                        "if(found.length===0){document.querySelectorAll('img').forEach(function(img){" +
+                        "  if((img.naturalWidth>300||img.width>300)&&img.src&&img.src.indexOf('http')===0&&found.indexOf(img.src)<0)found.push(img.src);" +
+                        "})}" +
+                        "Android.onUrls(JSON.stringify(found));" +
+                        "})()"
+                    view.loadUrl(js)
+                }, 2500)
+            }
+        })
     }
 
     private fun initTesseract() {
@@ -97,7 +151,8 @@ class ReaderActivity : Activity() {
         btnNext.setOnClickListener { loadEpisode(++episodeNo) }
         btnToggleOcr.setOnClickListener {
             overlaysVisible = !overlaysVisible
-            pageViews.forEach { it.toggleOverlays() }
+            var i = 0
+            while (i < pageViews.size) { pageViews[i].toggleOverlays(); i++ }
             btnToggleOcr.text = if (overlaysVisible) "翻訳非表示" else "翻訳表示"
         }
         scrollView.setOnClickListener { toggleNavBar() }
@@ -112,64 +167,19 @@ class ReaderActivity : Activity() {
         scrollView.visibility = View.GONE
         btnToggleOcr.visibility = View.GONE
         updateStatus("エピソード ${no} の画像URLを取得中…")
-        extractImageUrls(no)
+        extractorWebView.loadUrl(NaverComicsApi.translatedEpisodeUrl(no))
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun extractImageUrls(no: Int) {
-        val url = NaverComicsApi.translatedEpisodeUrl(no)
-        extractorWebView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0 Mobile Safari/537.36"
-        }
-        extractorWebView.addJavascriptInterface(object : Any() {
-            @JavascriptInterface
-            fun onUrls(json: String) {
-                try {
-                    val arr = JSONArray(json)
-                    val urls = (0 until arr.length()).map { arr.getString(it) }
-                    if (urls.isNotEmpty()) {
-                        mainHandler.post { startLoadingPages(urls) }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "URL parse error: ${e.message}")
-                }
-            }
-        }, "Android")
-
-        extractorWebView.setWebViewClient(object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String) {
-                view.postDelayed({
-                    val js = """
-                        javascript:(function(){
-                            var found=[];
-                            function add(s){document.querySelectorAll(s).forEach(function(img){
-                                var src=img.src||img.getAttribute('data-src')||'';
-                                if(src.indexOf('image-comic.pstatic.net')>-1&&found.indexOf(src)<0)found.push(src);
-                            });}
-                            add('img[src*="image-comic.pstatic.net"]');
-                            add('#comic_view_area img');add('.viewer_lst img');add('._img');
-                            if(found.length===0){document.querySelectorAll('img').forEach(function(img){
-                                if((img.naturalWidth>300||img.width>300)&&img.src&&img.src.indexOf('http')===0&&found.indexOf(img.src)<0)found.push(img.src);
-                            });}
-                            Android.onUrls(JSON.stringify(found));
-                        })()
-                    """.trimIndent()
-                    view.loadUrl(js)
-                }, 2500)
-            }
-        })
-        extractorWebView.loadUrl(url)
-    }
-
-    private fun startLoadingPages(urls: List<String>) {
+    private fun startLoadingPages(urls: ArrayList<String>) {
         loadingView.visibility = View.GONE
         scrollView.visibility = View.VISIBLE
         btnToggleOcr.visibility = View.VISIBLE
         updateStatus("${urls.size} ページを読み込み中…")
 
-        urls.forEachIndexed { i, url ->
+        var i = 0
+        while (i < urls.size) {
+            val idx = i
+            val url = urls[idx]
             val imgView = TranslatedImageView(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -182,53 +192,67 @@ class ReaderActivity : Activity() {
             pageContainer.addView(imgView)
             pageViews.add(imgView)
 
-            Thread { loadAndProcessPage(imgView, url, i + 1, urls.size) }.start()
+            val pageNum = idx + 1
+            val total = urls.size
+            downloadExecutor.execute {
+                loadAndProcessPage(imgView, url, pageNum, total)
+            }
+            i++
         }
     }
 
     private fun loadAndProcessPage(view: TranslatedImageView, url: String, pageNum: Int, total: Int) {
-        // 1. 画像ダウンロード
         val bitmap = downloadBitmap(url) ?: return
         mainHandler.post {
             view.setImageBitmap(bitmap)
             updateStatus("OCR処理中… ($pageNum/$total)")
         }
 
-        // 2. OCR
         if (!ocrEngine.isReady) return
-        val overlays = ocrEngine.processImage(bitmap)
-        if (overlays.isEmpty()) return
 
-        // 3. 翻訳 (一括)
-        val originals = overlays.map { it.originalText }
-        val translations = try {
-            MyMemoryTranslator.translateBatch(originals)
-        } catch (e: Exception) {
-            originals  // 失敗時は原文のまま
-        }
-        overlays.forEachIndexed { i, ov ->
-            ov.translatedText = translations.getOrElse(i) { ov.originalText }
-        }
+        // OCR は直列実行キューに投入 (同時アクセス防止)
+        ocrExecutor.execute {
+            val overlays = ocrEngine.processImage(bitmap)
+            if (overlays.isEmpty()) return@execute
 
-        mainHandler.post {
-            view.setOverlays(overlays)
-            if (pageNum == total) updateStatus("")
+            val originals = ArrayList<String>()
+            var i = 0
+            while (i < overlays.size) { originals.add(overlays[i].originalText); i++ }
+
+            val translations = try {
+                MyMemoryTranslator.translateBatch(originals)
+            } catch (e: Exception) {
+                originals
+            }
+            var j = 0
+            while (j < overlays.size) {
+                overlays[j].translatedText = if (j < translations.size) translations[j] else overlays[j].originalText
+                j++
+            }
+
+            mainHandler.post {
+                view.setOverlays(overlays)
+                if (pageNum == total) updateStatus("")
+            }
         }
     }
 
     private fun downloadBitmap(url: String): Bitmap? {
+        var conn: HttpURLConnection? = null
         return try {
-            val conn = URL(url).openConnection() as HttpURLConnection
+            conn = URL(url).openConnection() as HttpURLConnection
             conn.connectTimeout = 15000
             conn.readTimeout = 15000
             conn.setRequestProperty("Referer", "https://comic.naver.com")
             conn.setRequestProperty("User-Agent",
                 "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36")
             conn.connect()
-            BitmapFactory.decodeStream(conn.inputStream).also { conn.disconnect() }
+            BitmapFactory.decodeStream(conn.inputStream)
         } catch (e: Exception) {
             Log.e(TAG, "Image download failed for $url: ${e.message}")
             null
+        } finally {
+            conn?.disconnect()
         }
     }
 
@@ -247,6 +271,8 @@ class ReaderActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        downloadExecutor.shutdown()
+        ocrExecutor.shutdown()
         ocrEngine.release()
         extractorWebView.destroy()
     }

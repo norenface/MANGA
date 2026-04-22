@@ -64,6 +64,7 @@ class TesseractOcrEngine(private val context: Context) {
         }
     }
 
+    @Synchronized
     fun processImage(bitmap: Bitmap): List<TextOverlay> {
         val api = tessApi ?: return ArrayList()
         return try {
