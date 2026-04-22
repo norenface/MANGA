@@ -1,0 +1,4 @@
+build-minimal/build-out/
+*.class
+local.properties
+.gradle/
