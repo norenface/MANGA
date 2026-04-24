@@ -148,7 +148,9 @@ if [ -d "$BASE_DIR/jniLibs" ] && [ "$(ls -A "$BASE_DIR/jniLibs")" ]; then
         cp "$abi_dir"*.so "$BUILD/work/lib/$abi/" 2>/dev/null || true
     done
     cd "$BUILD/work"
-    zip -r "$BUILD/apk/app-unsigned.apk" lib/ 2>/dev/null || true
+    # -0 で非圧縮格納 (targetSdk>=23 では extractNativeLibs=false がデフォルトのため
+    # .so が DEFLATE 圧縮されていると System.loadLibrary が UnsatisfiedLinkError を投げる)
+    zip -r -0 "$BUILD/apk/app-unsigned.apk" lib/ 2>/dev/null || true
     cd "$BASE_DIR"
 fi
 
