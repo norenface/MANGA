@@ -153,9 +153,13 @@ if [ -d "$BASE_DIR/jniLibs" ] && [ "$(ls -A "$BASE_DIR/jniLibs")" ]; then
 fi
 
 # ============================================================
-# STEP 8: APK署名
+# STEP 8: zipalign + APK署名
 # ============================================================
-echo "=== 8/8 APK署名 ==="
+echo "=== 8/8 zipalign & APK署名 ==="
+
+# zipalign: 署名前に実行する必要がある
+zipalign -f 4 "$BUILD/apk/app-unsigned.apk" "$BUILD/apk/app-aligned.apk"
+
 if [ ! -f "$BUILD/debug.keystore" ]; then
     keytool -genkey -v \
         -keystore "$BUILD/debug.keystore" \
@@ -171,7 +175,7 @@ $APKSIGNER sign \
     --ks-pass pass:android \
     --key-pass pass:android \
     --out "$BUILD/app-tesseract-debug.apk" \
-    "$BUILD/apk/app-unsigned.apk"
+    "$BUILD/apk/app-aligned.apk"
 
 echo ""
 echo "============================================"

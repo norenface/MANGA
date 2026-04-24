@@ -279,8 +279,9 @@ class ReaderActivity : Activity() {
             opts.inPreferredConfig = Bitmap.Config.RGB_565  // ARGB_8888の半分のメモリ
 
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-        } catch (e: Exception) {
-            Log.e(TAG, "Image download failed for $url: ${e.message}")
+        } catch (t: Throwable) {
+            // OutOfMemoryError も含め捕捉
+            Log.e(TAG, "Image download failed for $url: ${t.message}")
             null
         } finally {
             conn?.disconnect()

@@ -33,8 +33,9 @@ class TesseractOcrEngine(private val context: Context) {
                 Log.e(tag, "Tesseract init returned false")
             }
             ok
-        } catch (e: Exception) {
-            Log.e(tag, "Init failed: ${e.message}")
+        } catch (t: Throwable) {
+            // UnsatisfiedLinkError (native lib 読み込み失敗) も含め捕捉
+            Log.e(tag, "Init failed: ${t.message}")
             false
         }
     }
@@ -67,9 +68,13 @@ class TesseractOcrEngine(private val context: Context) {
     @Synchronized
     fun processImage(bitmap: Bitmap): List<TextOverlay> {
         val api = tessApi ?: return ArrayList()
+        // Tesseract に渡す Bitmap を最大 1200px に制限してネイティブ OOM を防ぐ
+        val ocr = scaleBitmapForOcr(bitmap)
+        val scaleX = bitmap.width.toFloat() / ocr.width
+        val scaleY = bitmap.height.toFloat() / ocr.height
         return try {
-            api.setImage(bitmap)
-            api.getUTF8Text()   // triggers recognition
+            api.setImage(ocr)
+            api.getUTF8Text()
 
             val results = ArrayList<TextOverlay>()
             val ri = api.resultIterator
@@ -80,15 +85,35 @@ class TesseractOcrEngine(private val context: Context) {
                 val trimmed = text.trim()
                 if (trimmed.isEmpty()) continue
                 val box: Rect = ri.getBoundingRect(level) ?: continue
-                if (box.width() < 10 || box.height() < 10) continue
-                results.add(TextOverlay(boundingBox = box, originalText = trimmed))
+                if (box.width() < 8 || box.height() < 8) continue
+                // OCR 座標を元の Bitmap サイズに戻す
+                val scaled = Rect(
+                    (box.left   * scaleX).toInt(),
+                    (box.top    * scaleY).toInt(),
+                    (box.right  * scaleX).toInt(),
+                    (box.bottom * scaleY).toInt()
+                )
+                results.add(TextOverlay(boundingBox = scaled, originalText = trimmed))
             } while (ri.next(level))
             ri.delete()
             results
-        } catch (e: Exception) {
-            Log.e(tag, "OCR error: ${e.message}")
+        } catch (t: Throwable) {
+            Log.e(tag, "OCR error: ${t.message}")
             ArrayList()
+        } finally {
+            if (ocr !== bitmap) ocr.recycle()
         }
+    }
+
+    private fun scaleBitmapForOcr(src: Bitmap): Bitmap {
+        val maxDim = 1200
+        val w = src.width
+        val h = src.height
+        if (w <= maxDim && h <= maxDim) return src
+        val scale = maxDim.toFloat() / maxOf(w, h)
+        val nw = (w * scale).toInt().coerceAtLeast(1)
+        val nh = (h * scale).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(src, nw, nh, false)
     }
 
     fun release() {
