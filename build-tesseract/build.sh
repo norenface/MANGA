@@ -61,20 +61,21 @@ if [ ! -f "$LIBS/tess-two-classes.jar" ]; then
 fi
 
 # ============================================================
-# STEP 3: Korean tessdata ダウンロード (fast版 ~4MB)
+# STEP 3: Korean tessdata ダウンロード (Tesseract 3.04.x 対応版)
 # ============================================================
 echo "=== 3/8 韓国語テッセラクトデータをダウンロード中 ==="
 KOR_DATA="$BASE_DIR/assets/tessdata/kor.traineddata"
-if [ ! -f "$KOR_DATA" ] || [ "$(wc -c < "$KOR_DATA")" -lt 1000000 ]; then
-    echo "  Downloading kor.traineddata (fast version ~4MB)..."
-    # tessdata_fast はサイズが小さくモバイル向き
-    curl -sL --max-time 120 \
-        "https://github.com/tesseract-ocr/tessdata_fast/raw/main/kor.traineddata" \
+# tess-two は Tesseract 3.04.01 ベース。tessdata_fast (4.x LSTM) は非互換で
+# api.init() がネイティブ abort → アプリクラッシュになるため 3.04.00 を使う。
+# 3.04.00 版は ~6MB
+if [ ! -f "$KOR_DATA" ] || [ "$(wc -c < "$KOR_DATA")" -lt 4000000 ]; then
+    echo "  Downloading kor.traineddata (Tesseract 3.04.00 compatible, ~6MB)..."
+    curl -sL --max-time 180 \
+        "https://github.com/tesseract-ocr/tessdata/raw/3.04.00/kor.traineddata" \
         -o "$KOR_DATA" || {
-        # フォールバック: 別のミラーから試みる
-        echo "  Trying alternative source..."
+        echo "  Trying alternative URL..."
         curl -sL --max-time 180 \
-            "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/kor.traineddata" \
+            "https://raw.githubusercontent.com/tesseract-ocr/tessdata/3.04.00/kor.traineddata" \
             -o "$KOR_DATA"
     }
     echo "  Done: $(du -sh "$KOR_DATA" | cut -f1)"
