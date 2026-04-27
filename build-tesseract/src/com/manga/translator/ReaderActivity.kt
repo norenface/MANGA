@@ -3,6 +3,7 @@ package com.manga.translator
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -28,7 +29,6 @@ class ReaderActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // OCRエンジンはバックグラウンドで生成・初期化。失敗してもクラッシュしない
     @Volatile private var ocrEngine: com.manga.translator.ocr.TesseractOcrEngine? = null
 
     private val downloadExecutor = Executors.newFixedThreadPool(3)
@@ -55,7 +55,6 @@ class ReaderActivity : Activity() {
         super.onCreate(savedInstanceState)
         try {
             setContentView(R.layout.activity_reader)
-
             episodeNo = intent.getIntExtra(EXTRA_EPISODE, 1)
 
             scrollView      = findViewById(R.id.scrollView)      as ScrollView
@@ -70,35 +69,54 @@ class ReaderActivity : Activity() {
             btnToggleOcr    = findViewById(R.id.btnToggleOcr)    as Button
 
             setupControls()
-            initTesseract()   // バックグラウンドで行う
+            initTesseract()
             loadEpisode(episodeNo)
         } catch (t: Throwable) {
-            Log.e(TAG, "onCreate crash: $t")
+            Log.e(TAG, "onCreate: $t")
             finish()
         }
     }
 
-    // ---- Tesseract: 完全にバックグラウンド、失敗してもアプリ落ちない ----
+    // ---- Tesseract 初期化 ----
 
     private fun initTesseract() {
         Thread {
             try {
                 val engine = com.manga.translator.ocr.TesseractOcrEngine(applicationContext)
-                val ok = engine.initialize()
-                if (ok) {
+                if (engine.initialize()) {
                     ocrEngine = engine
                     Log.i(TAG, "Tesseract ready")
-                } else {
-                    Log.w(TAG, "Tesseract init returned false, OCR disabled")
+                    // 既に画像がロード済みのページに OCR を遡及実行
+                    mainHandler.post { retryOcrOnLoadedPages() }
                 }
             } catch (t: Throwable) {
-                // UnsatisfiedLinkError や OOM 含め全て捕捉
-                Log.e(TAG, "Tesseract unavailable: $t")
+                Log.e(TAG, "Tesseract init: $t")
             }
         }.start()
     }
 
-    // ---- 操作 ----
+    // Tesseract 初期化完了時点で既に表示中の画像に OCR をかける
+    private fun retryOcrOnLoadedPages() {
+        val epoch = loadEpoch
+        val engine = ocrEngine ?: return
+        var i = 0
+        while (i < pageViews.size) {
+            val view = pageViews[i]
+            val bmp = (view.drawable as? BitmapDrawable)?.bitmap
+            if (bmp != null && !bmp.isRecycled) {
+                val pageNum = i + 1
+                val total = pageViews.size
+                ocrExecutor.execute {
+                    try {
+                        if (epoch == loadEpoch) runOcr(engine, view, bmp, pageNum, total, epoch)
+                    } catch (t: Throwable) { Log.e(TAG, "retryOcr$pageNum: $t") }
+                }
+            }
+            i++
+        }
+    }
+
+    // ---- UI 操作 ----
 
     private fun setupControls() {
         btnClose.setOnClickListener { finish() }
@@ -112,7 +130,7 @@ class ReaderActivity : Activity() {
         scrollView.setOnClickListener { toggleNavBar() }
     }
 
-    // ---- エピソードロード ----
+    // ---- エピソード読み込み ----
 
     private fun loadEpisode(no: Int) {
         loadEpoch++
@@ -138,15 +156,14 @@ class ReaderActivity : Activity() {
                 try {
                     if (epoch != loadEpoch) return@post
                     if (urls.isNotEmpty()) startLoadingPages(urls, epoch)
-                    else showStatus("画像URLが見つかりませんでした\n(エピソード $no)")
-                } catch (t: Throwable) { Log.e(TAG, "startLoadingPages: $t") }
+                    else showStatus("画像URLが見つかりませんでした (エピソード $no)")
+                } catch (t: Throwable) { Log.e(TAG, "startPages: $t") }
             }
         } catch (t: Throwable) {
             Log.e(TAG, "fetchImageUrls: $t")
             mainHandler.post {
-                try {
-                    if (epoch == loadEpoch) showStatus("読込エラー:\n${t.javaClass.simpleName}")
-                } catch (_: Throwable) {}
+                try { if (epoch == loadEpoch) showStatus("読込エラー: ${t.javaClass.simpleName}") }
+                catch (_: Throwable) {}
             }
         }
     }
@@ -160,36 +177,28 @@ class ReaderActivity : Activity() {
             conn.instanceFollowRedirects = true
             conn.setRequestProperty("User-Agent",
                 "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0 Mobile Safari/537.36")
-            conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,*/*")
-            conn.setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9,ja;q=0.8")
+            conn.setRequestProperty("Accept", "text/html,*/*")
+            conn.setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9")
             conn.setRequestProperty("Referer", "https://m.comic.naver.com/")
             conn.connect()
             val code = conn.responseCode
             if (code != 200) throw Exception("HTTP $code")
             conn.inputStream.bufferedReader(Charsets.UTF_8).readText()
-        } finally {
-            conn?.disconnect()
-        }
+        } finally { conn?.disconnect() }
     }
 
     private fun extractImageUrls(html: String): ArrayList<String> {
         val urls = ArrayList<String>()
         val base = "image-comic.pstatic.net"
         val p1 = Regex(""""(https://$base/[^"]+)"""")
-        p1.findAll(html).forEach { m ->
-            val u = m.groupValues[1]; if (!urls.contains(u)) urls.add(u)
-        }
+        p1.findAll(html).forEach { m -> val u = m.groupValues[1]; if (!urls.contains(u)) urls.add(u) }
         if (urls.isEmpty()) {
             val p2 = Regex("""src=["'](https://$base/[^"']+)["']""")
-            p2.findAll(html).forEach { m ->
-                val u = m.groupValues[1]; if (!urls.contains(u)) urls.add(u)
-            }
+            p2.findAll(html).forEach { m -> val u = m.groupValues[1]; if (!urls.contains(u)) urls.add(u) }
         }
         if (urls.isEmpty()) {
             val p3 = Regex("""https://$base/[^\s"'<>\\]+""")
-            p3.findAll(html).forEach { m ->
-                val u = m.value; if (!urls.contains(u)) urls.add(u)
-            }
+            p3.findAll(html).forEach { m -> val u = m.value; if (!urls.contains(u)) urls.add(u) }
         }
         return urls
     }
@@ -201,7 +210,6 @@ class ReaderActivity : Activity() {
         loadingView.visibility = View.GONE
         scrollView.visibility = View.VISIBLE
         btnToggleOcr.visibility = View.VISIBLE
-
         val total = urls.size
         var i = 0
         while (i < urls.size) {
@@ -217,67 +225,83 @@ class ReaderActivity : Activity() {
                     scaleType = android.widget.ImageView.ScaleType.FIT_XY
                     setBackgroundColor(android.graphics.Color.parseColor("#222222"))
                 }
-            } catch (t: Throwable) { Log.e(TAG, "imgView: $t"); i++; continue }
-            try {
-                pageContainer.addView(imgView)
-                pageViews.add(imgView)
-            } catch (t: Throwable) { Log.e(TAG, "addView: $t"); i++; continue }
+            } catch (t: Throwable) { Log.e(TAG, "view: $t"); i++; continue }
+            try { pageContainer.addView(imgView); pageViews.add(imgView) }
+            catch (t: Throwable) { Log.e(TAG, "addView: $t"); i++; continue }
             downloadExecutor.execute {
-                try {
-                    if (epoch == loadEpoch) loadAndProcessPage(imgView, url, pageNum, total, epoch)
-                } catch (t: Throwable) { Log.e(TAG, "page$pageNum: $t") }
+                try { if (epoch == loadEpoch) loadAndProcessPage(imgView, url, pageNum, total, epoch) }
+                catch (t: Throwable) { Log.e(TAG, "page$pageNum: $t") }
             }
             i++
         }
     }
 
     private fun loadAndProcessPage(view: TranslatedImageView, url: String, pageNum: Int, total: Int, epoch: Int) {
-        val bitmap = try { downloadBitmap(url) } catch (t: Throwable) { Log.e(TAG, "dl: $t"); null }
-            ?: return
-        if (epoch != loadEpoch) { try { bitmap.recycle() } catch (_: Throwable) {}; return }
+        val bitmap = try { downloadBitmap(url) } catch (t: Throwable) { null } ?: return
+        if (epoch != loadEpoch) { bitmap.recycle(); return }
 
         mainHandler.post {
             try {
                 if (epoch == loadEpoch) {
                     view.setImageBitmap(bitmap)
                     showStatus("$pageNum / $total ページ読込済")
-                } else {
-                    bitmap.recycle()
-                }
+                } else bitmap.recycle()
             } catch (t: Throwable) { Log.e(TAG, "setImage: $t") }
         }
 
-        val engine = ocrEngine ?: return
+        val engine = ocrEngine ?: return  // まだ初期化中なら retryOcrOnLoadedPages で補完
         ocrExecutor.execute {
-            try {
-                if (epoch != loadEpoch) return@execute
-                val overlays = engine.processImage(bitmap)
-                if (overlays.isEmpty() || epoch != loadEpoch) return@execute
-
-                val originals = ArrayList<String>()
-                var i = 0; while (i < overlays.size) { originals.add(overlays[i].originalText); i++ }
-
-                val translations = try {
-                    MyMemoryTranslator.translateBatch(originals)
-                } catch (t: Throwable) { originals }
-
-                var j = 0
-                while (j < overlays.size) {
-                    overlays[j].translatedText =
-                        if (j < translations.size) translations[j] else overlays[j].originalText
-                    j++
-                }
-                mainHandler.post {
-                    try {
-                        if (epoch == loadEpoch) {
-                            view.setOverlays(overlays)
-                            if (pageNum == total) showStatus("")
-                        }
-                    } catch (t: Throwable) { Log.e(TAG, "overlay: $t") }
-                }
-            } catch (t: Throwable) { Log.e(TAG, "ocr: $t") }
+            try { if (epoch == loadEpoch) runOcr(engine, view, bitmap, pageNum, total, epoch) }
+            catch (t: Throwable) { Log.e(TAG, "ocr$pageNum: $t") }
         }
     }
+
+    private fun runOcr(
+        engine: com.manga.translator.ocr.TesseractOcrEngine,
+        view: TranslatedImageView,
+        bitmap: Bitmap,
+        pageNum: Int,
+        total: Int,
+        epoch: Int
+    ) {
+        if (epoch != loadEpoch) return
+
+        // RGB_565 → ARGB_8888 コピーを作成 (Tesseract は ARGB_8888 で動作が安定)
+        val ocrBmp = try {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } catch (_: Throwable) { bitmap }
+
+        try {
+            val overlays = engine.processImage(ocrBmp)
+            if (overlays.isEmpty() || epoch != loadEpoch) return
+
+            val originals = ArrayList<String>()
+            var i = 0; while (i < overlays.size) { originals.add(overlays[i].originalText); i++ }
+
+            val translations = try {
+                MyMemoryTranslator.translateBatch(originals)
+            } catch (_: Throwable) { originals }
+
+            var j = 0
+            while (j < overlays.size) {
+                overlays[j].translatedText =
+                    if (j < translations.size) translations[j] else overlays[j].originalText
+                j++
+            }
+            mainHandler.post {
+                try {
+                    if (epoch == loadEpoch) {
+                        view.setOverlays(overlays)
+                        if (pageNum == total) showStatus("")
+                    }
+                } catch (t: Throwable) { Log.e(TAG, "overlay: $t") }
+            }
+        } finally {
+            if (ocrBmp !== bitmap) ocrBmp.recycle()
+        }
+    }
+
+    // ---- 画像ダウンロード ----
 
     private fun downloadBitmap(url: String): Bitmap? {
         var conn: HttpURLConnection? = null
@@ -299,11 +323,8 @@ class ReaderActivity : Activity() {
             opts.inJustDecodeBounds = false
             opts.inPreferredConfig = Bitmap.Config.RGB_565
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-        } catch (t: Throwable) {
-            Log.e(TAG, "downloadBitmap: $t"); null
-        } finally {
-            conn?.disconnect()
-        }
+        } catch (t: Throwable) { Log.e(TAG, "dl: $t"); null }
+        finally { conn?.disconnect() }
     }
 
     private fun calcSampleSize(imgW: Int, targetW: Int): Int {

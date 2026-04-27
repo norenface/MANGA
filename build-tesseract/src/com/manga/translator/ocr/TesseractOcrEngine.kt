@@ -106,13 +106,13 @@ class TesseractOcrEngine(private val context: Context) {
     }
 
     private fun scaleBitmapForOcr(src: Bitmap): Bitmap {
-        val maxDim = 1200
-        val w = src.width
-        val h = src.height
-        if (w <= maxDim && h <= maxDim) return src
-        val scale = maxDim.toFloat() / maxOf(w, h)
-        val nw = (w * scale).toInt().coerceAtLeast(1)
-        val nh = (h * scale).toInt().coerceAtLeast(1)
+        // ウェブトゥーンは横幅が狭く縦が長い。幅基準でのみスケールし、
+        // 縦方向はそのまま保持することで文字の判読性を確保する。
+        val maxW = 1200
+        if (src.width <= maxW) return src
+        val scale = maxW.toFloat() / src.width
+        val nw = maxW
+        val nh = (src.height * scale).toInt().coerceAtLeast(1)
         return Bitmap.createScaledBitmap(src, nw, nh, false)
     }
 
