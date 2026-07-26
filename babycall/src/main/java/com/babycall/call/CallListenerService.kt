@@ -13,7 +13,10 @@ import androidx.lifecycle.lifecycleScope
 import com.babycall.AuthGate
 import com.babycall.Prefs
 import com.babycall.R
+import com.babycall.RoleSelectActivity
 import com.babycall.model.CallState
+import com.babycall.local.LocalCallServerHolder
+import com.babycall.pairing.PairingRepository
 import com.babycall.webrtc.SignalingRepository
 import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.launch
@@ -22,12 +25,16 @@ import kotlinx.coroutines.launch
  * Runs continuously on the baby's device so an incoming call can be picked
  * up (auto-answered) even if the app was swiped away or the device just
  * rebooted. This is the only thing on the baby device that "listens" for
- * anything, and it only ever reacts to the single paired family's call node.
+ * anything, and it only ever reacts to the single paired family (cloud
+ * mode: the Firebase call node; local mode: the socket server in
+ * [LocalCallServerHolder]).
  */
 class CallListenerService : LifecycleService() {
 
-    private var signaling: SignalingRepository? = null
-    private var listener: ValueEventListener? = null
+    private var cloudSignaling: SignalingRepository? = null
+    private val pairingRepo = PairingRepository()
+    private var settingsListener: ValueEventListener? = null
+    private var familyIdForSettings: String? = null
     private var callActivityLaunched = false
 
     override fun onCreate() {
@@ -41,18 +48,51 @@ class CallListenerService : LifecycleService() {
             return
         }
 
+        if (prefs.isLocalMode) {
+            startLocalListening(prefs, familyId)
+        } else {
+            startCloudListening(prefs, familyId)
+        }
+    }
+
+    private fun startLocalListening(prefs: Prefs, familyId: String) {
+        val server = LocalCallServerHolder.getOrCreate(this, prefs)
+        server.onIncomingCall = { callerId ->
+            if (!callActivityLaunched) {
+                callActivityLaunched = true
+                launchCallActivity(callerId)
+            }
+        }
+        server.onCallEnded = {
+            callActivityLaunched = false
+        }
+        server.onUnpaired = {
+            prefs.clearPairing()
+            LocalCallServerHolder.stop()
+            val intent = Intent(this, RoleSelectActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            startActivity(intent)
+            stopSelf()
+        }
+        server.start()
+    }
+
+    private fun startCloudListening(prefs: Prefs, familyId: String) {
         val myDeviceId = prefs.deviceId
         val repo = SignalingRepository(familyId)
-        signaling = repo
+        cloudSignaling = repo
+        familyIdForSettings = familyId
 
         lifecycleScope.launch {
             runCatching { AuthGate.ensureSignedIn() }
-            listener = repo.observeCallInfo { info ->
+
+            repo.observeCallInfo { info ->
                 when (info.state) {
                     CallState.RINGING -> {
                         if (info.calleeId == myDeviceId && !callActivityLaunched) {
                             callActivityLaunched = true
-                            launchCallActivity()
+                            launchCallActivity(info.callerId)
                         }
                     }
                     CallState.ENDED, CallState.IDLE -> {
@@ -61,12 +101,21 @@ class CallListenerService : LifecycleService() {
                     else -> {}
                 }
             }
+
+            // Keep the baby device's local copy of the PIN/auto-answer current
+            // so CallActivity/BabyHomeActivity never need their own Firebase
+            // round-trip to check them.
+            settingsListener = pairingRepo.observeSettings(familyId) { settings ->
+                prefs.pinHash = settings.pinHash
+                prefs.autoAnswer = settings.autoAnswer
+            }
         }
     }
 
-    private fun launchCallActivity() {
+    private fun launchCallActivity(callerId: String) {
         val intent = Intent(this, CallActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(CallActivity.EXTRA_CALLER_ID, callerId)
         }
         startActivity(intent)
     }
@@ -93,7 +142,8 @@ class CallListenerService : LifecycleService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        signaling?.let { repo -> listener?.let { repo.removeCallInfoListener(it) } }
+        cloudSignaling?.release()
+        familyIdForSettings?.let { fid -> settingsListener?.let { pairingRepo.removeSettingsListener(fid, it) } }
     }
 
     override fun onBind(intent: Intent): IBinder? {

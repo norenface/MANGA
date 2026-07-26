@@ -13,6 +13,7 @@ import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.databinding.ActivityParentSetupBinding
 import com.babycall.home.ParentHomeActivity
+import com.babycall.local.LocalPairingHost
 import kotlinx.coroutines.launch
 
 class ParentSetupActivity : AppCompatActivity() {
@@ -20,7 +21,8 @@ class ParentSetupActivity : AppCompatActivity() {
     private lateinit var binding: ActivityParentSetupBinding
     private lateinit var prefs: Prefs
     private val repo = PairingRepository()
-    private var familyId: String? = null
+    private var localHost: LocalPairingHost? = null
+    private var paired = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -52,20 +54,60 @@ class ParentSetupActivity : AppCompatActivity() {
         val name = binding.etParentName.text?.toString()?.trim().orEmpty().ifEmpty { "パパ・ママ" }
         val pin = binding.etPin.text?.toString()?.trim().orEmpty()
         val pinConfirm = binding.etPinConfirm.text?.toString()?.trim().orEmpty()
+        val isLocal = binding.radioLocal.isChecked
 
         if (pin.length < 4 || pin.length > 6 || !pin.all { it.isDigit() }) {
-            binding.tvError.text = getString(R.string.error_pin_format)
-            binding.tvError.visibility = android.view.View.VISIBLE
+            showError(getString(R.string.error_pin_format))
             return
         }
         if (pin != pinConfirm) {
-            binding.tvError.text = getString(R.string.error_pin_mismatch)
-            binding.tvError.visibility = android.view.View.VISIBLE
+            showError(getString(R.string.error_pin_mismatch))
             return
         }
         binding.tvError.visibility = android.view.View.GONE
         binding.btnCreateFamily.isEnabled = false
 
+        if (isLocal) {
+            createFamilyLocal(name, pin)
+        } else {
+            createFamilyCloud(name, pin)
+        }
+    }
+
+    private fun createFamilyLocal(name: String, pin: String) {
+        prefs.role = "parent"
+        prefs.transportMode = Prefs.TRANSPORT_LOCAL
+        prefs.deviceName = name
+        prefs.pinHash = Prefs.hashPin(pin)
+        prefs.autoAnswer = true
+
+        val host = LocalPairingHost(this)
+        localHost = host
+        prefs.familyId = host.familyId
+        prefs.localAuthToken = host.authToken
+
+        host.start(
+            parentName = name,
+            pinHash = Prefs.hashPin(pin),
+            autoAnswer = true,
+            parentDeviceId = prefs.deviceId,
+            onPaired = { _, babyDeviceId ->
+                runOnUiThread {
+                    paired = true
+                    prefs.peerDeviceId = babyDeviceId
+                    showCodeStep(host.code, connected = true)
+                }
+            },
+            onRejectedAttempt = {
+                runOnUiThread { showError(getString(R.string.error_pairing_wrong_code_attempt)) }
+            }
+        )
+
+        showCodeStep(host.code, connected = false)
+    }
+
+    private fun createFamilyCloud(name: String, pin: String) {
+        prefs.transportMode = Prefs.TRANSPORT_CLOUD
         lifecycleScope.launch {
             try {
                 AuthGate.ensureSignedIn()
@@ -77,16 +119,20 @@ class ParentSetupActivity : AppCompatActivity() {
                 prefs.familyId = newFamilyId
                 prefs.deviceName = name
                 prefs.pinHash = Prefs.hashPin(pin)
-                familyId = newFamilyId
 
                 val code = repo.generatePairingCode(newFamilyId)
-                showCodeStep(code)
+                paired = true
+                showCodeStep(code, connected = true)
             } catch (e: Exception) {
-                binding.tvError.text = e.message ?: getString(R.string.error_generic)
-                binding.tvError.visibility = android.view.View.VISIBLE
+                showError(e.message ?: getString(R.string.error_generic))
                 binding.btnCreateFamily.isEnabled = true
             }
         }
+    }
+
+    private fun showError(message: String) {
+        binding.tvError.text = message
+        binding.tvError.visibility = android.view.View.VISIBLE
     }
 
     private fun showInputStep() {
@@ -94,9 +140,15 @@ class ParentSetupActivity : AppCompatActivity() {
         binding.groupCode.visibility = android.view.View.GONE
     }
 
-    private fun showCodeStep(code: String) {
+    private fun showCodeStep(code: String, connected: Boolean) {
         binding.groupInput.visibility = android.view.View.GONE
         binding.groupCode.visibility = android.view.View.VISIBLE
         binding.tvCode.text = code.chunked(3).joinToString(" ")
+        binding.btnDone.isEnabled = connected
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (!paired) localHost?.stop()
     }
 }

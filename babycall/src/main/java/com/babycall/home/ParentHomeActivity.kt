@@ -51,6 +51,19 @@ class ParentHomeActivity : AppCompatActivity() {
 
     private fun refreshBabyStatus() {
         val familyId = prefs.familyId ?: return
+
+        if (prefs.isLocalMode) {
+            babyDeviceId = prefs.peerDeviceId
+            val paired = babyDeviceId != null
+            binding.groupNoBaby.visibility = if (paired) android.view.View.GONE else android.view.View.VISIBLE
+            binding.btnGeneratePairingCode.visibility = android.view.View.GONE
+            binding.btnCall.isEnabled = paired
+            binding.tvBabyStatus.text = getString(
+                if (paired) R.string.baby_connected else R.string.baby_not_connected_local
+            )
+            return
+        }
+
         lifecycleScope.launch {
             AuthGate.ensureSignedIn()
             babyDeviceId = repo.findBabyDeviceId(familyId)

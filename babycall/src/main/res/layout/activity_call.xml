@@ -75,6 +75,19 @@
             android:textColor="@color/white" />
     </LinearLayout>
 
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnAnswer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:backgroundTint="@color/safe_green"
+        android:text="@string/button_answer"
+        android:textSize="18sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="48dp" />
+
     <!--
         Baby-side "end call" affordance: intentionally has no visible button.
         A small, unlabeled dot in a corner must be held for several seconds

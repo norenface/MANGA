@@ -2,6 +2,8 @@ package com.babycall.webrtc
 
 import com.babycall.model.CallState
 import com.babycall.model.toCallState
+import com.babycall.signaling.CallSignaling
+import com.babycall.signaling.RemoteCallInfo
 import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -14,12 +16,6 @@ import kotlinx.coroutines.tasks.await
 import org.webrtc.IceCandidate
 import org.webrtc.SessionDescription
 
-data class RemoteCallInfo(
-    val state: CallState,
-    val callerId: String,
-    val calleeId: String
-)
-
 /**
  * All WebRTC signaling (offer/answer/ICE exchange) goes through
  * /families/{familyId}/call in Firebase Realtime Database. This node is only
@@ -27,12 +23,19 @@ data class RemoteCallInfo(
  * database.rules.json in README-babycall.md), so signaling never leaks
  * across families and a baby device can't be reached by anyone else's app.
  */
-class SignalingRepository(private val familyId: String) {
+class SignalingRepository(private val familyId: String) : CallSignaling {
 
     private val db: FirebaseDatabase = Firebase.database
     private val callRef: DatabaseReference = db.reference.child("families").child(familyId).child("call")
 
-    fun observeCallInfo(onChange: (RemoteCallInfo) -> Unit): ValueEventListener {
+    private var callInfoListener: ValueEventListener? = null
+    private var offerListener: ValueEventListener? = null
+    private var answerListener: ValueEventListener? = null
+    private var iceListener: ChildEventListener? = null
+    private var iceListenerDeviceId: String? = null
+
+    override fun observeCallInfo(onChange: (RemoteCallInfo) -> Unit) {
+        callInfoListener?.let { callRef.removeEventListener(it) }
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val state = snapshot.child("state").getValue(String::class.java).toCallState()
@@ -44,14 +47,10 @@ class SignalingRepository(private val familyId: String) {
             override fun onCancelled(error: DatabaseError) { /* listener stays registered; next tick retries */ }
         }
         callRef.addValueEventListener(listener)
-        return listener
+        callInfoListener = listener
     }
 
-    fun removeCallInfoListener(listener: ValueEventListener) {
-        callRef.removeEventListener(listener)
-    }
-
-    suspend fun startCall(callerId: String, calleeId: String) {
+    override suspend fun startCall(callerId: String, calleeId: String) {
         callRef.child("candidates").removeValue().await()
         callRef.child("offer").removeValue().await()
         callRef.child("answer").removeValue().await()
@@ -65,16 +64,17 @@ class SignalingRepository(private val familyId: String) {
         ).await()
     }
 
-    suspend fun sendOffer(sdp: SessionDescription) {
+    override suspend fun sendOffer(sdp: SessionDescription) {
         callRef.child("offer").setValue(mapOf("type" to sdp.type.canonicalForm(), "sdp" to sdp.description)).await()
     }
 
-    suspend fun sendAnswer(sdp: SessionDescription) {
+    override suspend fun sendAnswer(sdp: SessionDescription) {
         callRef.child("answer").setValue(mapOf("type" to sdp.type.canonicalForm(), "sdp" to sdp.description)).await()
         callRef.child("state").setValue("connected").await()
     }
 
-    fun observeOffer(onOffer: (SessionDescription) -> Unit): ValueEventListener {
+    override fun observeOffer(onOffer: (SessionDescription) -> Unit) {
+        offerListener?.let { callRef.child("offer").removeEventListener(it) }
         val ref = callRef.child("offer")
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -85,10 +85,11 @@ class SignalingRepository(private val familyId: String) {
             override fun onCancelled(error: DatabaseError) {}
         }
         ref.addValueEventListener(listener)
-        return listener
+        offerListener = listener
     }
 
-    fun observeAnswer(onAnswer: (SessionDescription) -> Unit): ValueEventListener {
+    override fun observeAnswer(onAnswer: (SessionDescription) -> Unit) {
+        answerListener?.let { callRef.child("answer").removeEventListener(it) }
         val ref = callRef.child("answer")
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -99,13 +100,10 @@ class SignalingRepository(private val familyId: String) {
             override fun onCancelled(error: DatabaseError) {}
         }
         ref.addValueEventListener(listener)
-        return listener
+        answerListener = listener
     }
 
-    fun removeOfferListener(listener: ValueEventListener) = callRef.child("offer").removeEventListener(listener)
-    fun removeAnswerListener(listener: ValueEventListener) = callRef.child("answer").removeEventListener(listener)
-
-    suspend fun sendIceCandidate(fromDeviceId: String, candidate: IceCandidate) {
+    override suspend fun sendIceCandidate(fromDeviceId: String, candidate: IceCandidate) {
         callRef.child("candidates").child(fromDeviceId).push().setValue(
             mapOf(
                 "sdpMid" to candidate.sdpMid,
@@ -115,7 +113,8 @@ class SignalingRepository(private val familyId: String) {
         ).await()
     }
 
-    fun observeIceCandidates(fromDeviceId: String, onCandidate: (IceCandidate) -> Unit): ChildEventListener {
+    override fun observeIceCandidates(fromDeviceId: String, onCandidate: (IceCandidate) -> Unit) {
+        iceListenerDeviceId?.let { prev -> iceListener?.let { callRef.child("candidates").child(prev).removeEventListener(it) } }
         val ref = callRef.child("candidates").child(fromDeviceId)
         val listener = object : ChildEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
@@ -131,19 +130,28 @@ class SignalingRepository(private val familyId: String) {
             override fun onCancelled(error: DatabaseError) {}
         }
         ref.addChildEventListener(listener)
-        return listener
+        iceListener = listener
+        iceListenerDeviceId = fromDeviceId
     }
 
-    fun removeIceCandidatesListener(fromDeviceId: String, listener: ChildEventListener) {
-        callRef.child("candidates").child(fromDeviceId).removeEventListener(listener)
-    }
-
-    suspend fun endCall(endedBy: String) {
+    override suspend fun endCall(endedBy: String) {
         callRef.child("state").setValue("ended").await()
         callRef.child("endedBy").setValue(endedBy).await()
     }
 
     suspend fun resetToIdle() {
         callRef.setValue(mapOf("state" to "idle")).await()
+    }
+
+    override fun release() {
+        callInfoListener?.let { callRef.removeEventListener(it) }
+        offerListener?.let { callRef.child("offer").removeEventListener(it) }
+        answerListener?.let { callRef.child("answer").removeEventListener(it) }
+        iceListenerDeviceId?.let { dev -> iceListener?.let { callRef.child("candidates").child(dev).removeEventListener(it) } }
+        callInfoListener = null
+        offerListener = null
+        answerListener = null
+        iceListener = null
+        iceListenerDeviceId = null
     }
 }

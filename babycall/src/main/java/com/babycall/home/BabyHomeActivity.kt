@@ -12,6 +12,7 @@ import com.babycall.R
 import com.babycall.RoleSelectActivity
 import com.babycall.call.CallListenerService
 import com.babycall.databinding.ActivityBabyHomeBinding
+import com.babycall.local.LocalCallServerHolder
 import com.babycall.pairing.PairingRepository
 import com.babycall.security.PinDialog
 import kotlinx.coroutines.launch
@@ -74,6 +75,17 @@ class BabyHomeActivity : AppCompatActivity() {
 
     private fun showExitPin() {
         val familyId = prefs.familyId ?: return
+
+        if (prefs.isLocalMode) {
+            val pinHash = prefs.pinHash ?: return
+            PinDialog.show(this, titleRes = R.string.pin_dialog_unpair_title) { rawPin ->
+                val ok = Prefs.hashPin(rawPin) == pinHash
+                if (ok) doLocalUnpair()
+                ok
+            }
+            return
+        }
+
         lifecycleScope.launch {
             AuthGate.ensureSignedIn()
             val pinHash = runCatching { repo.getSettings(familyId).pinHash }.getOrNull()
@@ -97,6 +109,18 @@ class BabyHomeActivity : AppCompatActivity() {
                 ok
             }
         }
+    }
+
+    private fun doLocalUnpair() {
+        prefs.clearPairing()
+        LocalCallServerHolder.stop()
+        stopService(Intent(this, CallListenerService::class.java))
+        try {
+            stopLockTask()
+        } catch (_: Exception) {
+        }
+        startActivity(Intent(this, RoleSelectActivity::class.java))
+        finish()
     }
 
     override fun onBackPressed() {

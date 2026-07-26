@@ -16,6 +16,13 @@
     <string name="hint_pin_confirm">暗証番号(確認)</string>
     <string name="pin_explanation">このPINは赤ちゃん端末で通話を終了したり、設定を解除したりする際に必要です。赤ちゃんには教えないでください。</string>
     <string name="button_create_family">作成する</string>
+    <string name="label_transport_mode">接続方式</string>
+    <string name="transport_mode_cloud">クラウド(どこからでも呼びかけ可能)</string>
+    <string name="transport_mode_local">ローカル(自宅Wi-Fi内のみ・アカウント不要)</string>
+    <string name="error_pairing_wrong_code_attempt">番号が違う端末から接続がありました。番号を再確認してください。</string>
+    <string name="status_searching_parent">保護者の端末を探しています…</string>
+    <string name="error_no_parent_found">保護者の端末が見つかりませんでした。同じWi-Fiに接続し、保護者側でペアリング画面を開いているか確認してください。</string>
+    <string name="pick_parent_title">どの端末に接続しますか?</string>
     <string name="pairing_code_title">この番号を赤ちゃん端末に入力してください</string>
     <string name="pairing_code_instructions">赤ちゃん端末のアプリを開き「赤ちゃんの端末として設定する」を選んでこの番号を入力すると、ペアリングが完了します。番号の有効期限は10分です。</string>
     <string name="button_go_home">ホームへ</string>
@@ -40,6 +47,7 @@
     <string name="button_mute">ミュート</string>
     <string name="button_end_call">通話を終了</string>
     <string name="button_switch_camera">カメラ切替</string>
+    <string name="button_answer">でんわにでる</string>
     <string name="pin_dialog_end_call_title">通話を終了しますか?</string>
 
     <!-- Baby home -->
@@ -51,6 +59,7 @@
     <string name="button_call_baby">呼びかける</string>
     <string name="baby_connected">赤ちゃん端末とつながっています</string>
     <string name="baby_not_connected">赤ちゃん端末が未接続です。下のボタンで番号を発行してください。</string>
+    <string name="baby_not_connected_local">赤ちゃん端末が未接続です。最初のセットアップをやり直してペアリングしてください。</string>
     <string name="button_generate_pairing_code">ペアリング番号を発行する</string>
     <string name="content_desc_settings">設定</string>
 
@@ -64,6 +73,8 @@
     <string name="hint_new_pin_confirm">新しいPIN(確認)</string>
     <string name="button_save_pin">PINを保存</string>
     <string name="settings_pin_saved">PINを更新しました。</string>
+    <string name="error_local_baby_unreachable">赤ちゃん端末が見つかりません。同じWi-Fiに接続されているか確認してから、もう一度お試しください。</string>
+    <string name="error_local_unpair_not_delivered">赤ちゃん端末に解除を伝えられませんでした(この保護者端末側の接続情報は解除しました)。赤ちゃん端末が同じWi-Fiに繋がったら、もう一度この操作をお試しください。</string>
     <string name="button_unpair_baby">赤ちゃん端末の接続を解除する</string>
     <string name="unpair_baby_confirm_title">接続を解除しますか?</string>
     <string name="unpair_baby_confirm_message">赤ちゃん端末との接続を解除します。再度使うには新しいペアリング番号での接続が必要です。</string>

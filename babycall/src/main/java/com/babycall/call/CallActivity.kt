@@ -10,17 +10,15 @@ import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.databinding.ActivityCallBinding
 import com.babycall.model.CallState
-import com.babycall.pairing.FamilySettings
-import com.babycall.pairing.PairingRepository
 import com.babycall.security.PinDialog
-import com.babycall.webrtc.SignalingRepository
+import com.babycall.signaling.CallSignaling
+import com.babycall.signaling.SignalingFactory
 import com.babycall.webrtc.WebRTCClient
-import com.google.firebase.database.ChildEventListener
-import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.launch
 
 /**
- * Shared call screen for both roles.
+ * Shared call screen for both roles, working over either transport (cloud
+ * Firebase or local Wi-Fi socket — see [SignalingFactory]).
  *
  * Baby role: no end-call button is shown at all. Ending a call requires
  * holding a small, unlabeled dot in the corner for 3 uninterrupted seconds
@@ -38,21 +36,14 @@ class CallActivity : AppCompatActivity() {
     private lateinit var familyId: String
     private lateinit var myDeviceId: String
 
-    private lateinit var signaling: SignalingRepository
+    private lateinit var signaling: CallSignaling
     private lateinit var webRTCClient: WebRTCClient
-    private val pairingRepo = PairingRepository()
 
     private var opponentId: String? = null
     private var signalingWired = false
     private var callEnded = false
+    private var offerPendingManualAnswer = false
 
-    private var callInfoListener: ValueEventListener? = null
-    private var offerListener: ValueEventListener? = null
-    private var answerListener: ValueEventListener? = null
-    private var iceListener: ChildEventListener? = null
-    private var settingsListener: ValueEventListener? = null
-
-    private var currentSettings = FamilySettings()
     private var holdRunnable: Runnable? = null
     private val holdHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -72,13 +63,11 @@ class CallActivity : AppCompatActivity() {
         role = prefs.role ?: "parent"
         familyId = prefs.familyId ?: run { finish(); return }
         myDeviceId = prefs.deviceId
-        signaling = SignalingRepository(familyId)
+        signaling = SignalingFactory.create(this, prefs)
 
         webRTCClient = WebRTCClient(this)
         webRTCClient.onIceCandidate = { candidate ->
-            opponentId?.let { opp ->
-                lifecycleScope.launch { runCatching { signaling.sendIceCandidate(myDeviceId, candidate) } }
-            }
+            lifecycleScope.launch { runCatching { signaling.sendIceCandidate(myDeviceId, candidate) } }
         }
         webRTCClient.onConnectionFailed = {
             runOnUiThread { finishCall() }
@@ -95,9 +84,7 @@ class CallActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            runCatching { AuthGate.ensureSignedIn() }
-
-            settingsListener = pairingRepo.observeSettings(familyId) { currentSettings = it }
+            if (!prefs.isLocalMode) runCatching { AuthGate.ensureSignedIn() }
 
             if (role == "parent") {
                 val calleeId = intent.getStringExtra(EXTRA_CALLEE_ID)
@@ -105,6 +92,11 @@ class CallActivity : AppCompatActivity() {
                     opponentId = calleeId
                     wireOutgoing(calleeId)
                 }
+            } else if (prefs.isLocalMode) {
+                // Local mode already knows who's calling (CallListenerService
+                // learned it synchronously before launching this screen).
+                val callerId = intent.getStringExtra(EXTRA_CALLER_ID).orEmpty()
+                wireIncoming(callerId)
             }
 
             observeCallLifecycle()
@@ -121,27 +113,41 @@ class CallActivity : AppCompatActivity() {
                 webRTCClient.createOffer { sdp ->
                     lifecycleScope.launch { runCatching { signaling.sendOffer(sdp) } }
                 }
+            }.onFailure { e ->
+                runOnUiThread {
+                    binding.tvStatus.text = e.message ?: getString(R.string.error_generic)
+                }
             }
         }
-        answerListener = signaling.observeAnswer { sdp -> webRTCClient.setRemoteDescription(sdp) }
-        iceListener = signaling.observeIceCandidates(calleeId) { webRTCClient.addIceCandidate(it) }
+        signaling.observeAnswer { sdp -> webRTCClient.setRemoteDescription(sdp) }
+        signaling.observeIceCandidates(calleeId) { webRTCClient.addIceCandidate(it) }
     }
 
     private fun wireIncoming(callerId: String) {
         if (signalingWired) return
         signalingWired = true
         opponentId = callerId
-        offerListener = signaling.observeOffer { sdp ->
+        signaling.observeOffer { sdp ->
             webRTCClient.setRemoteDescription(sdp)
-            webRTCClient.createAnswer { answerSdp ->
-                lifecycleScope.launch { runCatching { signaling.sendAnswer(answerSdp) } }
+            if (prefs.autoAnswer) {
+                createAndSendAnswer()
+            } else {
+                offerPendingManualAnswer = true
+                runOnUiThread { binding.btnAnswer.visibility = android.view.View.VISIBLE }
             }
         }
-        iceListener = signaling.observeIceCandidates(callerId) { webRTCClient.addIceCandidate(it) }
+        signaling.observeIceCandidates(callerId) { webRTCClient.addIceCandidate(it) }
+    }
+
+    private fun createAndSendAnswer() {
+        offerPendingManualAnswer = false
+        webRTCClient.createAnswer { answerSdp ->
+            lifecycleScope.launch { runCatching { signaling.sendAnswer(answerSdp) } }
+        }
     }
 
     private fun observeCallLifecycle() {
-        callInfoListener = signaling.observeCallInfo { info ->
+        signaling.observeCallInfo { info ->
             if (role == "baby" && !signalingWired && info.state == CallState.RINGING && info.calleeId == myDeviceId) {
                 runOnUiThread { wireIncoming(info.callerId) }
             }
@@ -180,6 +186,11 @@ class CallActivity : AppCompatActivity() {
         binding.groupBabyEndControl.visibility = android.view.View.VISIBLE
         binding.tvStatus.text = getString(R.string.call_connecting)
 
+        binding.btnAnswer.setOnClickListener {
+            binding.btnAnswer.visibility = android.view.View.GONE
+            createAndSendAnswer()
+        }
+
         binding.hiddenEndDot.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -213,8 +224,7 @@ class CallActivity : AppCompatActivity() {
     }
 
     private fun showParentPinToEnd() {
-        val pinHash = currentSettings.pinHash
-        if (pinHash == null) return
+        val pinHash = prefs.pinHash ?: return
         PinDialog.show(this, titleRes = R.string.pin_dialog_end_call_title) { rawPin ->
             if (Prefs.hashPin(rawPin) == pinHash) {
                 lifecycleScope.launch {
@@ -248,17 +258,14 @@ class CallActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        callInfoListener?.let { signaling.removeCallInfoListener(it) }
-        offerListener?.let { signaling.removeOfferListener(it) }
-        answerListener?.let { signaling.removeAnswerListener(it) }
-        opponentId?.let { opp -> iceListener?.let { signaling.removeIceCandidatesListener(opp, it) } }
-        settingsListener?.let { pairingRepo.removeSettingsListener(familyId, it) }
+        signaling.release()
         holdRunnable?.let { holdHandler.removeCallbacks(it) }
         webRTCClient.close()
     }
 
     companion object {
         const val EXTRA_CALLEE_ID = "extra_callee_id"
+        const val EXTRA_CALLER_ID = "extra_caller_id"
         private const val HOLD_DURATION_MS = 3000L
     }
 }
