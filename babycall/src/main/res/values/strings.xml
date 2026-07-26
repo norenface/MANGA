@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BabyCall</string>
+
+    <!-- Role select -->
+    <string name="role_select_subtitle">赤ちゃんが勝手に切ったり、他の人に電話をかけたりできない、安心のビデオ通話アプリです。</string>
+    <string name="role_select_parent_button">保護者として設定する</string>
+    <string name="role_select_baby_button">赤ちゃんの端末として設定する</string>
+    <string name="warning_firebase_not_configured">Firebaseが未設定です。README-babycall.md の手順に従って strings_firebase.xml を設定してください。</string>
+
+    <!-- Parent setup -->
+    <string name="parent_setup_title">保護者の設定</string>
+    <string name="parent_setup_subtitle">お名前と、通話終了やペアリング解除に使う暗証番号(PIN)を設定してください。</string>
+    <string name="hint_parent_name">お名前(例:ママ)</string>
+    <string name="hint_pin">暗証番号(4〜6桁)</string>
+    <string name="hint_pin_confirm">暗証番号(確認)</string>
+    <string name="pin_explanation">このPINは赤ちゃん端末で通話を終了したり、設定を解除したりする際に必要です。赤ちゃんには教えないでください。</string>
+    <string name="button_create_family">作成する</string>
+    <string name="pairing_code_title">この番号を赤ちゃん端末に入力してください</string>
+    <string name="pairing_code_instructions">赤ちゃん端末のアプリを開き「赤ちゃんの端末として設定する」を選んでこの番号を入力すると、ペアリングが完了します。番号の有効期限は10分です。</string>
+    <string name="button_go_home">ホームへ</string>
+
+    <!-- Baby setup -->
+    <string name="baby_setup_title">赤ちゃん端末の設定</string>
+    <string name="baby_setup_subtitle">保護者の端末に表示された6桁の番号を入力してください。この端末は、この番号で接続した保護者からの通話にしか応答できなくなります。</string>
+    <string name="hint_baby_name">呼び名(例:ゆうくん)</string>
+    <string name="hint_pairing_code">6桁の番号</string>
+    <string name="warning_permissions_required">通話にはカメラとマイクの権限が必要です。設定から許可してください。</string>
+    <string name="button_connect">つなぐ</string>
+
+    <!-- Errors -->
+    <string name="error_pin_format">PINは4〜6桁の数字で入力してください。</string>
+    <string name="error_pin_mismatch">PINが一致しません。</string>
+    <string name="error_pin_incorrect">PINが違います。</string>
+    <string name="error_code_format">6桁の番号を入力してください。</string>
+    <string name="error_generic">エラーが発生しました。もう一度お試しください。</string>
+
+    <!-- Call screen -->
+    <string name="call_connecting">つながるまで、少々お待ちください…</string>
+    <string name="button_mute">ミュート</string>
+    <string name="button_end_call">通話を終了</string>
+    <string name="button_switch_camera">カメラ切替</string>
+    <string name="pin_dialog_end_call_title">通話を終了しますか?</string>
+
+    <!-- Baby home -->
+    <string name="baby_home_waiting_emoji">🧸</string>
+    <string name="baby_home_waiting_message">呼ばれるのを待っているよ</string>
+    <string name="pin_dialog_unpair_title">この端末の設定を解除しますか?</string>
+
+    <!-- Parent home -->
+    <string name="button_call_baby">呼びかける</string>
+    <string name="baby_connected">赤ちゃん端末とつながっています</string>
+    <string name="baby_not_connected">赤ちゃん端末が未接続です。下のボタンで番号を発行してください。</string>
+    <string name="button_generate_pairing_code">ペアリング番号を発行する</string>
+    <string name="content_desc_settings">設定</string>
+
+    <!-- Settings -->
+    <string name="settings_title">設定</string>
+    <string name="settings_auto_answer">自動応答をオンにする</string>
+    <string name="settings_auto_answer_explanation">オンの場合、赤ちゃん端末は着信すると操作なしで自動的につながります(推奨)。オフの場合は赤ちゃん端末に応答ボタンが表示されます。</string>
+    <string name="settings_change_pin">PINの変更</string>
+    <string name="settings_pin_explanation">赤ちゃん端末で通話終了・設定解除に使うPINです。変更すると両方の端末に反映されます。</string>
+    <string name="hint_new_pin">新しいPIN</string>
+    <string name="hint_new_pin_confirm">新しいPIN(確認)</string>
+    <string name="button_save_pin">PINを保存</string>
+    <string name="settings_pin_saved">PINを更新しました。</string>
+    <string name="button_unpair_baby">赤ちゃん端末の接続を解除する</string>
+    <string name="unpair_baby_confirm_title">接続を解除しますか?</string>
+    <string name="unpair_baby_confirm_message">赤ちゃん端末との接続を解除します。再度使うには新しいペアリング番号での接続が必要です。</string>
+
+    <!-- Notification -->
+    <string name="notification_channel_baby_listener">着信待機</string>
+    <string name="notification_listener_title">BabyCall 待機中</string>
+    <string name="notification_listener_text">保護者からの通話をお待ちしています</string>
+
+    <!-- Shared dialogs -->
+    <string name="button_confirm">決定</string>
+    <string name="button_cancel">キャンセル</string>
+</resources>

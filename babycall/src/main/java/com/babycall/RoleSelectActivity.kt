@@ -1,0 +1,50 @@
+package com.babycall
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import com.babycall.databinding.ActivityRoleSelectBinding
+import com.babycall.home.BabyHomeActivity
+import com.babycall.home.ParentHomeActivity
+import com.babycall.pairing.BabySetupActivity
+import com.babycall.pairing.ParentSetupActivity
+
+class RoleSelectActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityRoleSelectBinding
+    private lateinit var prefs: Prefs
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        prefs = Prefs(this)
+
+        if (prefs.isPaired) {
+            routeToHome()
+            return
+        }
+
+        binding = ActivityRoleSelectBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        binding.tvFirebaseWarning.visibility =
+            if (App.isFirebaseConfigured(this)) android.view.View.GONE else android.view.View.VISIBLE
+
+        binding.btnParent.setOnClickListener {
+            startActivity(Intent(this, ParentSetupActivity::class.java))
+        }
+        binding.btnBaby.setOnClickListener {
+            startActivity(Intent(this, BabySetupActivity::class.java))
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (prefs.isPaired) routeToHome()
+    }
+
+    private fun routeToHome() {
+        val target = if (prefs.role == "baby") BabyHomeActivity::class.java else ParentHomeActivity::class.java
+        startActivity(Intent(this, target))
+        finish()
+    }
+}

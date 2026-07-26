@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- simple face + video-call badge, baby-friendly palette -->
+    <path
+        android:pathData="M54,34 m-24,0 a24,24 0 1,0 48,0 a24,24 0 1,0 -48,0"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M44,32 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0"
+        android:fillColor="#5D4037" />
+    <path
+        android:pathData="M59,32 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0"
+        android:fillColor="#5D4037" />
+    <path
+        android:pathData="M46,42 Q54,48 62,42"
+        android:strokeColor="#5D4037"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M24,70 L70,70 L70,94 L24,94 Z"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M70,78 L88,68 L88,96 L70,86 Z"
+        android:fillColor="#FFFFFF" />
+</vector>

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_primary">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_title"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchAutoAnswer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/settings_auto_answer" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/settings_auto_answer_explanation"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginVertical="24dp"
+            android:background="@color/divider" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_change_pin"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp"
+            android:text="@string/settings_pin_explanation"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/hint_new_pin">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etNewPin"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="numberPassword"
+                android:maxLength="6" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/hint_new_pin_confirm">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etNewPinConfirm"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="numberPassword"
+                android:maxLength="6" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSavePin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/button_save_pin" />
+
+        <TextView
+            android:id="@+id/tvSettingsSaved"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/settings_pin_saved"
+            android:textColor="@color/safe_green"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvSettingsError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/danger_red"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginVertical="24dp"
+            android:background="@color/divider" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnUnpairBaby"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/danger_red"
+            android:text="@string/button_unpair_baby" />
+
+    </LinearLayout>
+</ScrollView>

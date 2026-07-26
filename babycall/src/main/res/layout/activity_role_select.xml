@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:background="@color/bg_primary">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/app_name"
+        android:textColor="@color/text_primary"
+        android:textSize="28sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="40dp"
+        android:text="@string/role_select_subtitle"
+        android:textColor="@color/text_secondary"
+        android:textSize="15sp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnParent"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="@string/role_select_parent_button"
+        android:textSize="16sp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnBaby"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginTop="16dp"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:text="@string/role_select_baby_button"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/tvFirebaseWarning"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:visibility="gone"
+        android:text="@string/warning_firebase_not_configured"
+        android:textColor="@color/danger_red"
+        android:textSize="12sp" />
+
+</LinearLayout>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_primary">#FFF8F0</color>
+    <color name="bg_surface">#FFFFFF</color>
+
+    <color name="text_primary">#3E2723</color>
+    <color name="text_secondary">#8D6E63</color>
+
+    <color name="accent">#FFB74D</color>
+    <color name="accent_dark">#F57C00</color>
+    <color name="safe_green">#66BB6A</color>
+    <color name="danger_red">#E57373</color>
+
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="divider">#EEEEEE</color>
+
+    <color name="call_bg">#212121</color>
+</resources>
