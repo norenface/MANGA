@@ -14,10 +14,9 @@ import com.babycall.AuthGate
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.RoleSelectActivity
-import com.babycall.model.CallState
 import com.babycall.local.LocalCallServerHolder
 import com.babycall.pairing.PairingRepository
-import com.babycall.webrtc.SignalingRepository
+import com.babycall.webrtc.SignalingRoomRepository
 import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.launch
 
@@ -31,11 +30,12 @@ import kotlinx.coroutines.launch
  */
 class CallListenerService : LifecycleService() {
 
-    private var cloudSignaling: SignalingRepository? = null
+    private var roomRepo: SignalingRoomRepository? = null
     private val pairingRepo = PairingRepository()
     private var settingsListener: ValueEventListener? = null
     private var familyIdForSettings: String? = null
     private var callActivityLaunched = false
+    private var ringingCount = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -79,28 +79,30 @@ class CallListenerService : LifecycleService() {
     }
 
     private fun startCloudListening(prefs: Prefs, familyId: String) {
-        val myDeviceId = prefs.deviceId
-        val repo = SignalingRepository(familyId)
-        cloudSignaling = repo
         familyIdForSettings = familyId
 
         lifecycleScope.launch {
             runCatching { AuthGate.ensureSignedIn() }
 
-            repo.observeCallInfo { info ->
-                when (info.state) {
-                    CallState.RINGING -> {
-                        if (info.calleeId == myDeviceId && !callActivityLaunched) {
-                            callActivityLaunched = true
-                            launchCallActivity(info.callerId)
-                        }
+            // Only decides whether to launch CallActivity for the first
+            // viewer of a new call; once it's open, CallActivity has its own
+            // SignalingRoomRepository that picks up every viewer (including
+            // ones who join later, mid-call) on its own.
+            val repo = SignalingRoomRepository(familyId)
+            roomRepo = repo
+            repo.observeSessions(
+                onNewSession = { _, callerId ->
+                    ringingCount++
+                    if (!callActivityLaunched) {
+                        callActivityLaunched = true
+                        launchCallActivity(callerId)
                     }
-                    CallState.ENDED, CallState.IDLE -> {
-                        callActivityLaunched = false
-                    }
-                    else -> {}
+                },
+                onSessionEnded = {
+                    ringingCount = (ringingCount - 1).coerceAtLeast(0)
+                    if (ringingCount == 0) callActivityLaunched = false
                 }
-            }
+            )
 
             // Keep the baby device's local copy of the PIN/auto-answer current
             // so CallActivity/BabyHomeActivity never need their own Firebase
@@ -142,7 +144,7 @@ class CallListenerService : LifecycleService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        cloudSignaling?.release()
+        roomRepo?.release()
         familyIdForSettings?.let { fid -> settingsListener?.let { pairingRepo.removeSettingsListener(fid, it) } }
     }
 

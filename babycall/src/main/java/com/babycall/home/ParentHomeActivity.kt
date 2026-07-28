@@ -98,7 +98,7 @@ class ParentHomeActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 AuthGate.ensureSignedIn()
-                val code = repo.generatePairingCode(familyId, forRole = "parent")
+                val code = repo.getOrCreateInviteCode(familyId)
                 AlertDialog.Builder(this@ParentHomeActivity)
                     .setTitle(R.string.invite_dialog_title)
                     .setMessage(getString(R.string.invite_dialog_message, code.chunked(3).joinToString(" ")))

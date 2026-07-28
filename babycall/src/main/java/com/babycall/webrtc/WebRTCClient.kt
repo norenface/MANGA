@@ -21,9 +21,16 @@ import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 
 /**
- * Thin wrapper around org.webrtc's PeerConnection APIs. One instance per call;
- * call [close] when the call ends so the camera/mic are released immediately
- * (important on a baby's device, which should not keep recording between calls).
+ * Thin wrapper around org.webrtc's PeerConnection APIs. One local camera/mic
+ * capture is shared (a single MediaStreamTrack can be attached to any number
+ * of PeerConnections in WebRTC), but each remote participant gets its own
+ * independently-negotiated [PeerConnection] keyed by [peerId] — this is what
+ * lets the baby device stay connected to several viewers at once (a parent,
+ * a grandparent, an uncle, ...) without them interfering with each other:
+ * closing one peer's connection never touches the others.
+ *
+ * One instance per call screen; call [close] when leaving the screen so the
+ * camera/mic are released immediately.
  */
 class WebRTCClient(
     private val context: Context,
@@ -32,18 +39,17 @@ class WebRTCClient(
     val eglBase: EglBase = EglBase.create()
 
     private val peerConnectionFactory: PeerConnectionFactory by lazy { buildFactory() }
-    private var peerConnection: PeerConnection? = null
+    private val peerConnections = mutableMapOf<String, PeerConnection>()
+    private val remoteRenderers = mutableMapOf<String, SurfaceViewRenderer>()
 
     private var videoCapturer: CameraVideoCapturer? = null
     private var localVideoSource: VideoSource? = null
     private var localVideoTrack: VideoTrack? = null
     private var localAudioTrack: AudioTrack? = null
     private var localRenderer: SurfaceViewRenderer? = null
-    private var remoteRenderer: SurfaceViewRenderer? = null
 
-    var onIceCandidate: ((IceCandidate) -> Unit)? = null
-    var onRemoteVideoTrack: ((VideoTrack) -> Unit)? = null
-    var onConnectionFailed: (() -> Unit)? = null
+    var onIceCandidate: ((peerId: String, candidate: IceCandidate) -> Unit)? = null
+    var onConnectionFailed: ((peerId: String) -> Unit)? = null
 
     private fun buildFactory(): PeerConnectionFactory {
         PeerConnectionFactory.initialize(
@@ -94,9 +100,15 @@ class WebRTCClient(
         return null
     }
 
-    fun initPeerConnection(remoteRenderer: SurfaceViewRenderer) {
-        this.remoteRenderer = remoteRenderer
-        remoteRenderer.init(eglBase.eglBaseContext, null)
+    /**
+     * Creates a new, independent PeerConnection to one participant. Pass a
+     * non-null [remoteRenderer] to display their incoming video (used by a
+     * viewer showing the baby's camera); pass null to receive but not render
+     * it (used by the baby, which doesn't display each viewer's video).
+     */
+    fun createPeerConnection(peerId: String, remoteRenderer: SurfaceViewRenderer?) {
+        remoteRenderer?.init(eglBase.eglBaseContext, null)
+        if (remoteRenderer != null) remoteRenderers[peerId] = remoteRenderer
 
         val iceServers = mutableListOf(
             PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
@@ -108,22 +120,21 @@ class WebRTCClient(
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
         }
 
-        peerConnection = peerConnectionFactory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
+        val pc = peerConnectionFactory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) {
-                onIceCandidate?.invoke(candidate)
+                onIceCandidate?.invoke(peerId, candidate)
             }
 
             override fun onTrack(transceiver: org.webrtc.RtpTransceiver) {
                 val track = transceiver.receiver.track()
                 if (track is VideoTrack) {
-                    track.addSink(remoteRenderer)
-                    onRemoteVideoTrack?.invoke(track)
+                    remoteRenderers[peerId]?.let { track.addSink(it) }
                 }
             }
 
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
                 if (state == PeerConnection.IceConnectionState.FAILED) {
-                    onConnectionFailed?.invoke()
+                    onConnectionFailed?.invoke(peerId)
                 }
             }
 
@@ -137,14 +148,15 @@ class WebRTCClient(
             override fun onDataChannel(channel: org.webrtc.DataChannel) {}
             override fun onRenegotiationNeeded() {}
             override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) {}
-        })
+        }) ?: return
 
-        localVideoTrack?.let { peerConnection?.addTrack(it, listOf("babycall_stream")) }
-        localAudioTrack?.let { peerConnection?.addTrack(it, listOf("babycall_stream")) }
+        peerConnections[peerId] = pc
+        localVideoTrack?.let { pc.addTrack(it, listOf("babycall_stream")) }
+        localAudioTrack?.let { pc.addTrack(it, listOf("babycall_stream")) }
     }
 
-    fun createOffer(onCreated: (SessionDescription) -> Unit) {
-        val pc = peerConnection ?: return
+    fun createOffer(peerId: String, onCreated: (SessionDescription) -> Unit) {
+        val pc = peerConnections[peerId] ?: return
         val constraints = MediaConstraints()
         pc.createOffer(object : SdpObserverAdapter() {
             override fun onCreateSuccess(desc: SessionDescription) {
@@ -154,8 +166,8 @@ class WebRTCClient(
         }, constraints)
     }
 
-    fun createAnswer(onCreated: (SessionDescription) -> Unit) {
-        val pc = peerConnection ?: return
+    fun createAnswer(peerId: String, onCreated: (SessionDescription) -> Unit) {
+        val pc = peerConnections[peerId] ?: return
         val constraints = MediaConstraints()
         pc.createAnswer(object : SdpObserverAdapter() {
             override fun onCreateSuccess(desc: SessionDescription) {
@@ -165,12 +177,12 @@ class WebRTCClient(
         }, constraints)
     }
 
-    fun setRemoteDescription(sdp: SessionDescription) {
-        peerConnection?.setRemoteDescription(SdpObserverAdapter(), sdp)
+    fun setRemoteDescription(peerId: String, sdp: SessionDescription) {
+        peerConnections[peerId]?.setRemoteDescription(SdpObserverAdapter(), sdp)
     }
 
-    fun addIceCandidate(candidate: IceCandidate) {
-        peerConnection?.addIceCandidate(candidate)
+    fun addIceCandidate(peerId: String, candidate: IceCandidate) {
+        peerConnections[peerId]?.addIceCandidate(candidate)
     }
 
     fun setMuted(muted: Boolean) {
@@ -181,17 +193,33 @@ class WebRTCClient(
         videoCapturer?.switchCamera(null)
     }
 
+    /** Ends and releases just one participant's connection; the others (and the shared camera/mic) keep running. */
+    fun closePeerConnection(peerId: String) {
+        peerConnections.remove(peerId)?.let {
+            it.close()
+            it.dispose()
+        }
+        remoteRenderers.remove(peerId)?.release()
+    }
+
+    fun activePeerCount(): Int = peerConnections.size
+
     fun close() {
+        peerConnections.values.forEach {
+            it.close()
+            it.dispose()
+        }
+        peerConnections.clear()
+        remoteRenderers.values.forEach { it.release() }
+        remoteRenderers.clear()
+
         try {
             videoCapturer?.stopCapture()
         } catch (_: Exception) {
         }
         videoCapturer?.dispose()
         localVideoSource?.dispose()
-        peerConnection?.close()
-        peerConnection?.dispose()
         localRenderer?.release()
-        remoteRenderer?.release()
         peerConnectionFactory.dispose()
         eglBase.release()
     }

@@ -44,7 +44,7 @@
     <string name="button_join">参加する</string>
     <string name="button_invite_family">家族を招待する</string>
     <string name="invite_dialog_title">この番号を招待したい方にお伝えください</string>
-    <string name="invite_dialog_message">%1$s\n\n招待された方がBabyCallアプリで「招待コードで家族に参加する」を選び、この番号を入力すると、その方の端末からも赤ちゃんに呼びかけられるようになります。有効期限は10分です。</string>
+    <string name="invite_dialog_message">%1$s\n\nこの番号はずっと使えます。招待された方がBabyCallアプリで「招待コードで家族に参加する」を選び、この番号を入力すると、その方の端末からも赤ちゃんに呼びかけられるようになります。通話中に後から入ることもできます。</string>
 
     <!-- Errors -->
     <string name="error_pin_format">PINは4〜6桁の数字で入力してください。</string>
@@ -55,7 +55,7 @@
 
     <!-- Call screen -->
     <string name="call_connecting">つながるまで、少々お待ちください…</string>
-    <string name="error_baby_busy">ただいま他の方が通話中です。しばらくしてからおかけ直しください。</string>
+    <string name="viewer_count_format">%1$d人が視聴中</string>
     <string name="button_mute">ミュート</string>
     <string name="button_end_call">通話を終了</string>
     <string name="button_switch_camera">カメラ切替</string>

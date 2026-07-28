@@ -49,24 +49,19 @@ class PairingRepository {
             )
         ).await()
 
-        familyRef.child("call").child("state").setValue("idle").await()
-
         return familyId
     }
 
     /**
-     * @param forRole "baby" (default) for a code meant to be redeemed by a baby
-     * device, or "parent" for a code meant to invite another viewer (a
-     * grandparent, an uncle, a second phone) into an existing family. The
-     * redeeming side's flow determines which method it calls, and each
-     * method rejects a code generated for the other purpose.
+     * Generates a one-time, 10-minute pairing code meant for the baby device
+     * only (used once, when first attaching a baby device to the family).
      */
-    suspend fun generatePairingCode(familyId: String, forRole: String = "baby"): String {
+    suspend fun generatePairingCode(familyId: String): String {
         val code = (100000 + Random.nextInt(900000)).toString()
         root.child("pairing_codes").child(code).setValue(
             mapOf(
                 "familyId" to familyId,
-                "forRole" to forRole,
+                "forRole" to "baby",
                 "createdAt" to System.currentTimeMillis()
             )
         ).await()
@@ -74,7 +69,22 @@ class PairingRepository {
     }
 
     suspend fun redeemPairingCode(code: String, deviceId: String, babyName: String): String {
-        val familyId = consumePairingCode(code, expectedRole = "baby")
+        val snapshot = root.child("pairing_codes").child(code).get().await()
+        if (!snapshot.exists()) {
+            throw PairingException("コードが見つかりません。もう一度確認してください。")
+        }
+        val familyId = snapshot.child("familyId").getValue(String::class.java)
+            ?: throw PairingException("コードが壊れています。")
+        val forRole = snapshot.child("forRole").getValue(String::class.java) ?: "baby"
+        val createdAt = snapshot.child("createdAt").getValue(Long::class.java) ?: 0L
+
+        if (forRole != "baby") {
+            throw PairingException("この番号は赤ちゃん端末用ではありません。保護者を招待する番号です。")
+        }
+        if (System.currentTimeMillis() - createdAt > CODE_EXPIRY_MS) {
+            root.child("pairing_codes").child(code).removeValue()
+            throw PairingException("コードの有効期限が切れています。親アプリで再発行してください。")
+        }
 
         root.child("families").child(familyId).child("members").child(deviceId).setValue(
             mapOf(
@@ -85,16 +95,55 @@ class PairingRepository {
             )
         ).await()
 
+        // Single use: remove immediately so the code can't be reused or shared.
+        root.child("pairing_codes").child(code).removeValue().await()
+
         return familyId
+    }
+
+    /**
+     * Returns the family's one permanent invite code, creating it the first
+     * time it's needed. Unlike the baby-pairing code, this one never expires
+     * and is never deleted after use — anyone who has it can join as an
+     * additional viewer at any time, any number of times, which is the
+     * point: a relative living elsewhere can be given the number once (by
+     * phone, text, however) and it just keeps working.
+     */
+    suspend fun getOrCreateInviteCode(familyId: String): String {
+        val existing = root.child("families").child(familyId).child("inviteCode").get().await()
+            .getValue(String::class.java)
+        if (existing != null) return existing
+
+        val code = (100000 + Random.nextInt(900000)).toString()
+        root.child("pairing_codes").child(code).setValue(
+            mapOf(
+                "familyId" to familyId,
+                "forRole" to "parent",
+                "createdAt" to System.currentTimeMillis()
+            )
+        ).await()
+        root.child("families").child(familyId).child("inviteCode").setValue(code).await()
+        return code
     }
 
     /**
      * Joins an existing family as an additional viewer (role "parent") —
      * used by relatives who live elsewhere and want to be able to call the
-     * same baby device, not the family's creator.
+     * same baby device, not the family's creator. The code is never
+     * consumed, so the same code can be reused by anyone who has it,
+     * whenever they like.
      */
     suspend fun joinFamilyAsParent(code: String, deviceId: String, name: String): String {
-        val familyId = consumePairingCode(code, expectedRole = "parent")
+        val snapshot = root.child("pairing_codes").child(code).get().await()
+        if (!snapshot.exists()) {
+            throw PairingException("コードが見つかりません。もう一度確認してください。")
+        }
+        val familyId = snapshot.child("familyId").getValue(String::class.java)
+            ?: throw PairingException("コードが壊れています。")
+        val forRole = snapshot.child("forRole").getValue(String::class.java) ?: "baby"
+        if (forRole != "parent") {
+            throw PairingException("この番号は保護者を招待する番号ではありません。")
+        }
 
         root.child("families").child(familyId).child("members").child(deviceId).setValue(
             mapOf(
@@ -104,33 +153,6 @@ class PairingRepository {
                 "lastSeen" to System.currentTimeMillis()
             )
         ).await()
-
-        return familyId
-    }
-
-    private suspend fun consumePairingCode(code: String, expectedRole: String): String {
-        val snapshot = root.child("pairing_codes").child(code).get().await()
-        if (!snapshot.exists()) {
-            throw PairingException("コードが見つかりません。もう一度確認してください。")
-        }
-        val familyId = snapshot.child("familyId").getValue(String::class.java)
-            ?: throw PairingException("コードが壊れています。")
-        val forRole = snapshot.child("forRole").getValue(String::class.java) ?: "baby"
-        val createdAt = snapshot.child("createdAt").getValue(Long::class.java) ?: 0L
-
-        if (forRole != expectedRole) {
-            throw PairingException(
-                if (expectedRole == "baby") "この番号は赤ちゃん端末用ではありません。保護者を招待する番号です。"
-                else "この番号は保護者を招待する番号ではありません。"
-            )
-        }
-        if (System.currentTimeMillis() - createdAt > CODE_EXPIRY_MS) {
-            root.child("pairing_codes").child(code).removeValue()
-            throw PairingException("コードの有効期限が切れています。再発行してもらってください。")
-        }
-
-        // Single use: remove immediately so the code can't be reused or shared.
-        root.child("pairing_codes").child(code).removeValue().await()
 
         return familyId
     }

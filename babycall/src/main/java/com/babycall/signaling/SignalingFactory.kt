@@ -6,6 +6,13 @@ import com.babycall.local.LocalCallClient
 import com.babycall.local.LocalCallServerHolder
 import com.babycall.webrtc.SignalingRepository
 
+/**
+ * Builds a single-session [CallSignaling] for whichever device is calling
+ * this: a viewer (in either mode), or the baby device in *local* mode only.
+ * The baby device in *cloud* mode does not use this factory at all — it
+ * juggles many sessions at once via [com.babycall.webrtc.SignalingRoomRepository]
+ * instead (see CallActivity).
+ */
 object SignalingFactory {
     fun create(context: Context, prefs: Prefs): CallSignaling {
         return if (prefs.isLocalMode) {
@@ -16,7 +23,7 @@ object SignalingFactory {
             }
         } else {
             val familyId = prefs.familyId ?: error("not paired")
-            SignalingRepository(familyId)
+            SignalingRepository(familyId, sessionId = prefs.deviceId)
         }
     }
 }

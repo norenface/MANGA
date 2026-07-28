@@ -11,24 +11,26 @@ data class RemoteCallInfo(
 )
 
 /**
- * Transport-agnostic signaling channel used by CallActivity / CallListenerService.
- * Two implementations exist:
- *  - [com.babycall.webrtc.SignalingRepository] (Firebase Realtime Database, works
- *    from anywhere with internet)
- *  - the `local.*` classes (raw socket over the home Wi-Fi/LAN, no internet or
- *    account needed, but only works while both devices are on the same network)
+ * Transport-agnostic signaling channel for ONE participant's session in a
+ * call. Implementations:
+ *  - [com.babycall.webrtc.SignalingRepository] (Firebase Realtime Database,
+ *    scoped to one session under /families/{familyId}/call/sessions/{id};
+ *    works from anywhere with internet)
+ *  - the `local.*` classes (raw socket over the home Wi-Fi/LAN, no internet
+ *    or account needed, single session only, same-network only)
  *
- * Each CallActivity/CallListenerService instance owns exactly one
- * CallSignaling and calls [release] exactly once when done with it.
+ * A viewer (parent/relative) always owns exactly one CallSignaling for the
+ * duration of a call. In cloud mode, the baby device owns one per connected
+ * viewer simultaneously (see [SignalingRoomRepository]), so several people
+ * can be in the same call independently of each other; in local mode the
+ * baby is limited to a single CallSignaling (see LocalCallServer). Call
+ * [release] exactly once when done with an instance.
  */
 interface CallSignaling {
     fun observeCallInfo(onChange: (RemoteCallInfo) -> Unit)
     fun observeOffer(onOffer: (SessionDescription) -> Unit)
     fun observeAnswer(onAnswer: (SessionDescription) -> Unit)
     fun observeIceCandidates(fromDeviceId: String, onCandidate: (IceCandidate) -> Unit)
-
-    /** True if the baby device is already in another call (e.g. a second viewer trying to call at the same time). */
-    suspend fun isBusy(): Boolean
 
     suspend fun startCall(callerId: String, calleeId: String)
     suspend fun sendOffer(sdp: SessionDescription)
