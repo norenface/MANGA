@@ -11,7 +11,7 @@ import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.ktx.database
-import com.google.firebase.Firebase
+import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.tasks.await
 import org.webrtc.IceCandidate
 import org.webrtc.SessionDescription

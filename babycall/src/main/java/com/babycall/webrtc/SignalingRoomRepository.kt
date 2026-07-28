@@ -6,7 +6,7 @@ import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ktx.database
-import com.google.firebase.Firebase
+import com.google.firebase.ktx.Firebase
 
 /**
  * Baby-side (cloud mode only): watches every viewer's session under
