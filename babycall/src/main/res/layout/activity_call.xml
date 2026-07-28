@@ -5,10 +5,12 @@
     android:layout_height="match_parent"
     android:background="@color/call_bg">
 
-    <org.webrtc.SurfaceViewRenderer
-        android:id="@+id/remoteRenderer"
+    <!-- Populated programmatically: one tile per connected participant (see CallActivity's video grid helpers). -->
+    <LinearLayout
+        android:id="@+id/remoteVideoGrid"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:orientation="vertical"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"

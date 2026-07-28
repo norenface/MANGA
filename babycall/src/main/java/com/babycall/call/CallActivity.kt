@@ -2,7 +2,9 @@ package com.babycall.call
 
 import android.os.Bundle
 import android.view.MotionEvent
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.babycall.AuthGate
@@ -13,20 +15,27 @@ import com.babycall.model.CallState
 import com.babycall.security.PinDialog
 import com.babycall.signaling.CallSignaling
 import com.babycall.signaling.SignalingFactory
+import com.babycall.webrtc.MeshLinkRepository
 import com.babycall.webrtc.SignalingRepository
 import com.babycall.webrtc.SignalingRoomRepository
 import com.babycall.webrtc.WebRTCClient
 import kotlinx.coroutines.launch
+import org.webrtc.SurfaceViewRenderer
 
 /**
  * Shared call screen for both roles, working over either transport (cloud
  * Firebase or local Wi-Fi socket — see [SignalingFactory]).
  *
- * Baby role, cloud mode: several viewers (the family's creator and anyone
- * who joined later with the invite code) can be connected at once, each
- * with their own independent WebRTC connection (see [SignalingRoomRepository]);
- * one leaving never disconnects the others. Baby role, local mode: limited
- * to a single viewer, unchanged from the original design.
+ * Cloud mode is a full group call: the baby device keeps one independent
+ * WebRTC connection per connected viewer (see [SignalingRoomRepository]),
+ * AND every viewer connects directly to every other viewer too (see
+ * [MeshLinkRepository]) so relatives can see and hear each other, not just
+ * the baby. Every participant's screen shows one video tile per other
+ * participant it's connected to, arranged in a simple grid that grows and
+ * shrinks as people join or leave. One participant leaving only tears down
+ * their own connections; everyone else stays connected. Local mode is
+ * unaffected — a single baby, a single viewer, unchanged from the original
+ * design.
  *
  * Baby role (either mode): no end-call button is shown at all. Ending a
  * call requires holding a small, unlabeled dot in the corner for 3
@@ -47,9 +56,14 @@ class CallActivity : AppCompatActivity() {
     private lateinit var myDeviceId: String
     private lateinit var webRTCClient: WebRTCClient
 
-    /** peerId -> that peer's signaling channel. One entry for a viewer or a local-mode baby; one per connected viewer for a cloud-mode baby. */
+    /** peerId -> that peer's baby<->viewer signaling. One entry for a viewer or a local-mode baby; one per connected viewer for a cloud-mode baby. */
     private val sessions = mutableMapOf<String, CallSignaling>()
-    private var mySessionKey: String? = null
+
+    /** otherViewerId -> direct viewer-to-viewer signaling (cloud-mode viewers only). */
+    private val meshLinks = mutableMapOf<String, MeshLinkRepository>()
+
+    private val remoteTiles = mutableMapOf<String, SurfaceViewRenderer>()
+
     private var callEnded = false
     private var offerPendingManualAnswer = false
     private var pendingManualAnswerPeerId: String? = null
@@ -78,7 +92,12 @@ class CallActivity : AppCompatActivity() {
 
         webRTCClient = WebRTCClient(this)
         webRTCClient.onIceCandidate = { peerId, candidate ->
-            lifecycleScope.launch { runCatching { sessions[peerId]?.sendIceCandidate(myDeviceId, candidate) } }
+            lifecycleScope.launch {
+                runCatching {
+                    sessions[peerId]?.sendIceCandidate(myDeviceId, candidate)
+                        ?: meshLinks[peerId]?.sendIceCandidate(myDeviceId, candidate)
+                }
+            }
         }
         webRTCClient.onConnectionFailed = { peerId ->
             runOnUiThread { endSession(peerId) }
@@ -98,7 +117,10 @@ class CallActivity : AppCompatActivity() {
 
             if (role == "parent") {
                 val calleeId = intent.getStringExtra(EXTRA_CALLEE_ID)
-                if (calleeId != null) wireOutgoing(calleeId)
+                if (calleeId != null) {
+                    wireOutgoing(calleeId)
+                    if (!prefs.isLocalMode) startViewerMeshDiscovery()
+                }
             } else if (prefs.isLocalMode) {
                 // Local mode already knows who's calling (CallListenerService
                 // learned it synchronously before launching this screen).
@@ -110,14 +132,14 @@ class CallActivity : AppCompatActivity() {
         }
     }
 
-    // ---- Viewer (parent / invited relative) — single session, either mode ----
+    // ---- Viewer (parent / invited relative) — link to the baby, either mode ----
 
     private fun wireOutgoing(calleeId: String) {
-        mySessionKey = calleeId
         val signaling = SignalingFactory.create(this, prefs)
         sessions[calleeId] = signaling
 
-        webRTCClient.createPeerConnection(calleeId, binding.remoteRenderer)
+        val tile = addRemoteTile(calleeId)
+        webRTCClient.createPeerConnection(calleeId, tile)
 
         lifecycleScope.launch {
             runCatching {
@@ -143,14 +165,54 @@ class CallActivity : AppCompatActivity() {
         }
     }
 
-    // ---- Baby, local mode — single session (unchanged design) ----
+    // ---- Viewer-to-viewer mesh (cloud mode only): see and hear every other viewer directly ----
+
+    private fun startViewerMeshDiscovery() {
+        val repo = SignalingRoomRepository(familyId)
+        roomRepo = repo
+        repo.observeSessions(
+            onNewSession = { sessionId, _ ->
+                if (sessionId != myDeviceId) runOnUiThread { handleNewMeshPeer(sessionId) }
+            },
+            onSessionEnded = { sessionId ->
+                if (sessionId != myDeviceId) runOnUiThread { endSession(sessionId) }
+            }
+        )
+    }
+
+    private fun handleNewMeshPeer(otherViewerId: String) {
+        if (meshLinks.containsKey(otherViewerId)) return
+        val mesh = MeshLinkRepository(familyId, MeshLinkRepository.keyFor(myDeviceId, otherViewerId))
+        meshLinks[otherViewerId] = mesh
+
+        val tile = addRemoteTile(otherViewerId)
+        webRTCClient.createPeerConnection(otherViewerId, tile)
+
+        // Deterministic roles avoid both sides creating an offer at once (glare).
+        if (myDeviceId < otherViewerId) {
+            webRTCClient.createOffer(otherViewerId) { sdp ->
+                lifecycleScope.launch { runCatching { mesh.sendOffer(sdp) } }
+            }
+            mesh.observeAnswer { sdp -> webRTCClient.setRemoteDescription(otherViewerId, sdp) }
+        } else {
+            mesh.observeOffer { sdp ->
+                webRTCClient.setRemoteDescription(otherViewerId, sdp)
+                webRTCClient.createAnswer(otherViewerId) { answerSdp ->
+                    lifecycleScope.launch { runCatching { mesh.sendAnswer(answerSdp) } }
+                }
+            }
+        }
+        mesh.observeIceCandidates(otherViewerId) { webRTCClient.addIceCandidate(otherViewerId, it) }
+    }
+
+    // ---- Baby, local mode — single viewer (unchanged design, now also shows their video) ----
 
     private fun wireIncomingSingle(callerId: String) {
-        mySessionKey = callerId
         val signaling = SignalingFactory.create(this, prefs)
         sessions[callerId] = signaling
 
-        webRTCClient.createPeerConnection(callerId, remoteRenderer = null)
+        val tile = addRemoteTile(callerId)
+        webRTCClient.createPeerConnection(callerId, tile)
 
         signaling.observeOffer { sdp ->
             webRTCClient.setRemoteDescription(callerId, sdp)
@@ -170,7 +232,7 @@ class CallActivity : AppCompatActivity() {
         }
     }
 
-    // ---- Baby, cloud mode — one independent session per connected viewer ----
+    // ---- Baby, cloud mode — one independent connection per connected viewer ----
 
     private fun startBabyRoom() {
         val repo = SignalingRoomRepository(familyId)
@@ -186,7 +248,8 @@ class CallActivity : AppCompatActivity() {
         val signaling = SignalingRepository(familyId, sessionId)
         sessions[sessionId] = signaling
 
-        webRTCClient.createPeerConnection(sessionId, remoteRenderer = null)
+        val tile = addRemoteTile(sessionId)
+        webRTCClient.createPeerConnection(sessionId, tile)
 
         signaling.observeOffer { sdp ->
             webRTCClient.setRemoteDescription(sessionId, sdp)
@@ -215,16 +278,59 @@ class CallActivity : AppCompatActivity() {
         binding.tvStatus.text = getString(R.string.viewer_count_format, sessions.size)
     }
 
-    // ---- Ending one session (works uniformly for viewer, local baby, or one of a cloud baby's viewers) ----
+    // ---- Video grid (every role): one tile per currently-connected participant ----
+
+    private fun addRemoteTile(peerId: String): SurfaceViewRenderer {
+        remoteTiles[peerId]?.let { return it }
+        val renderer = SurfaceViewRenderer(this)
+        remoteTiles[peerId] = renderer
+        rebuildVideoGrid()
+        return renderer
+    }
+
+    private fun removeRemoteTile(peerId: String) {
+        if (remoteTiles.remove(peerId) != null) rebuildVideoGrid()
+    }
+
+    private fun rebuildVideoGrid() {
+        val grid = binding.remoteVideoGrid
+        grid.removeAllViews()
+        val tiles = remoteTiles.values.toList()
+        if (tiles.isEmpty()) return
+
+        val columns = if (tiles.size <= 1) 1 else 2
+        var i = 0
+        while (i < tiles.size) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            }
+            var addedInRow = 0
+            while (addedInRow < columns && i < tiles.size) {
+                val tile = tiles[i]
+                (tile.parent as? ViewGroup)?.removeView(tile)
+                row.addView(tile, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+                i++
+                addedInRow++
+            }
+            grid.addView(row)
+        }
+    }
+
+    // ---- Ending one connection (viewer<->baby link, or a viewer<->viewer mesh link) ----
 
     private fun endSession(peerId: String) {
         webRTCClient.closePeerConnection(peerId)
-        sessions.remove(peerId)?.release()
+        removeRemoteTile(peerId)
         if (pendingManualAnswerPeerId == peerId) {
             offerPendingManualAnswer = false
             pendingManualAnswerPeerId = null
             binding.btnAnswer.visibility = android.view.View.GONE
         }
+
+        val wasBabyLink = sessions.containsKey(peerId)
+        sessions.remove(peerId)?.release()
+        meshLinks.remove(peerId)?.release()
 
         if (role == "baby" && !prefs.isLocalMode) {
             if (sessions.isEmpty()) {
@@ -232,10 +338,13 @@ class CallActivity : AppCompatActivity() {
             } else {
                 updateViewerCountUi()
             }
-        } else {
-            // Viewer, or a local-mode baby: this was the only session.
+        } else if (wasBabyLink) {
+            // My own connection to the baby ended — for a viewer, or a
+            // local-mode baby (whose only connection this always is).
             finishCall()
         }
+        // Otherwise this was a mesh peer (another viewer) leaving — just
+        // drop their tile; my own call with the baby carries on.
     }
 
     // ---- Parent UI ----
@@ -245,9 +354,8 @@ class CallActivity : AppCompatActivity() {
         binding.groupParentControls.visibility = android.view.View.VISIBLE
 
         binding.btnEndCall.setOnClickListener {
-            val key = mySessionKey
             lifecycleScope.launch {
-                if (key != null) runCatching { sessions[key]?.endCall(myDeviceId) }
+                sessions.values.toList().forEach { runCatching { it.endCall(myDeviceId) } }
                 finishCall()
             }
         }
@@ -341,6 +449,8 @@ class CallActivity : AppCompatActivity() {
         roomRepo?.release()
         sessions.values.forEach { it.release() }
         sessions.clear()
+        meshLinks.values.forEach { it.release() }
+        meshLinks.clear()
         holdRunnable?.let { holdHandler.removeCallbacks(it) }
         webRTCClient.close()
     }
