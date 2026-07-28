@@ -27,6 +27,9 @@ interface CallSignaling {
     fun observeAnswer(onAnswer: (SessionDescription) -> Unit)
     fun observeIceCandidates(fromDeviceId: String, onCandidate: (IceCandidate) -> Unit)
 
+    /** True if the baby device is already in another call (e.g. a second viewer trying to call at the same time). */
+    suspend fun isBusy(): Boolean
+
     suspend fun startCall(callerId: String, calleeId: String)
     suspend fun sendOffer(sdp: SessionDescription)
     suspend fun sendAnswer(sdp: SessionDescription)

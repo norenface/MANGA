@@ -5,6 +5,7 @@
     <!-- Role select -->
     <string name="role_select_subtitle">赤ちゃんが勝手に切ったり、他の人に電話をかけたりできない、安心のビデオ通話アプリです。</string>
     <string name="role_select_parent_button">保護者として設定する</string>
+    <string name="role_select_join_family_button">招待コードで家族に参加する(離れて暮らすご家族向け)</string>
     <string name="role_select_baby_button">赤ちゃんの端末として設定する</string>
     <string name="warning_firebase_not_configured">Firebaseが未設定です。README-babycall.md の手順に従って strings_firebase.xml を設定してください。</string>
 
@@ -35,6 +36,16 @@
     <string name="warning_permissions_required">通話にはカメラとマイクの権限が必要です。設定から許可してください。</string>
     <string name="button_connect">つなぐ</string>
 
+    <!-- Join family (remote viewer, e.g. grandparent/uncle) -->
+    <string name="join_family_title">家族に参加する</string>
+    <string name="join_family_subtitle">すでに設定済みの保護者アプリで発行された招待コードを入力してください。離れた場所からでも赤ちゃん端末に呼びかけられるようになります。</string>
+    <string name="hint_your_name">お名前(例:おじいちゃん)</string>
+    <string name="hint_invite_code">招待コード(6桁)</string>
+    <string name="button_join">参加する</string>
+    <string name="button_invite_family">家族を招待する</string>
+    <string name="invite_dialog_title">この番号を招待したい方にお伝えください</string>
+    <string name="invite_dialog_message">%1$s\n\n招待された方がBabyCallアプリで「招待コードで家族に参加する」を選び、この番号を入力すると、その方の端末からも赤ちゃんに呼びかけられるようになります。有効期限は10分です。</string>
+
     <!-- Errors -->
     <string name="error_pin_format">PINは4〜6桁の数字で入力してください。</string>
     <string name="error_pin_mismatch">PINが一致しません。</string>
@@ -44,6 +55,7 @@
 
     <!-- Call screen -->
     <string name="call_connecting">つながるまで、少々お待ちください…</string>
+    <string name="error_baby_busy">ただいま他の方が通話中です。しばらくしてからおかけ直しください。</string>
     <string name="button_mute">ミュート</string>
     <string name="button_end_call">通話を終了</string>
     <string name="button_switch_camera">カメラ切替</string>

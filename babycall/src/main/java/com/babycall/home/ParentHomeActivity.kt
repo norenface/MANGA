@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -40,6 +41,9 @@ class ParentHomeActivity : AppCompatActivity() {
         }
         binding.btnCall.setOnClickListener { onCallClicked() }
         binding.btnGeneratePairingCode.setOnClickListener { generateCode() }
+        binding.btnInviteFamily.setOnClickListener { onInviteFamilyClicked() }
+        binding.btnInviteFamily.visibility =
+            if (prefs.isLocalMode) android.view.View.GONE else android.view.View.VISIBLE
 
         refreshBabyStatus()
     }
@@ -85,6 +89,26 @@ class ParentHomeActivity : AppCompatActivity() {
             val code = repo.generatePairingCode(familyId)
             binding.tvGeneratedCode.text = code.chunked(3).joinToString(" ")
             binding.tvGeneratedCode.visibility = android.view.View.VISIBLE
+        }
+    }
+
+    private fun onInviteFamilyClicked() {
+        val familyId = prefs.familyId ?: return
+        binding.btnInviteFamily.isEnabled = false
+        lifecycleScope.launch {
+            try {
+                AuthGate.ensureSignedIn()
+                val code = repo.generatePairingCode(familyId, forRole = "parent")
+                AlertDialog.Builder(this@ParentHomeActivity)
+                    .setTitle(R.string.invite_dialog_title)
+                    .setMessage(getString(R.string.invite_dialog_message, code.chunked(3).joinToString(" ")))
+                    .setPositiveButton(R.string.button_confirm, null)
+                    .show()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(this@ParentHomeActivity, e.message ?: getString(R.string.error_generic), android.widget.Toast.LENGTH_LONG).show()
+            } finally {
+                binding.btnInviteFamily.isEnabled = true
+            }
         }
     }
 

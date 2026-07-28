@@ -109,6 +109,9 @@ class CallActivity : AppCompatActivity() {
         signalingWired = true
         lifecycleScope.launch {
             runCatching {
+                if (signaling.isBusy()) {
+                    throw IllegalStateException(getString(R.string.error_baby_busy))
+                }
                 signaling.startCall(myDeviceId, calleeId)
                 webRTCClient.createOffer { sdp ->
                     lifecycleScope.launch { runCatching { signaling.sendOffer(sdp) } }

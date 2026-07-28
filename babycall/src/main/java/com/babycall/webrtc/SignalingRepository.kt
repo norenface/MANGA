@@ -50,6 +50,11 @@ class SignalingRepository(private val familyId: String) : CallSignaling {
         callInfoListener = listener
     }
 
+    override suspend fun isBusy(): Boolean {
+        val state = callRef.child("state").get().await().getValue(String::class.java).toCallState()
+        return state == CallState.RINGING || state == CallState.CONNECTED
+    }
+
     override suspend fun startCall(callerId: String, calleeId: String) {
         callRef.child("candidates").removeValue().await()
         callRef.child("offer").removeValue().await()

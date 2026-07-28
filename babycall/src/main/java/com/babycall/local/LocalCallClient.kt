@@ -42,6 +42,8 @@ class LocalCallClient(private val context: Context, private val prefs: Prefs) : 
         iceCb = onCandidate
     }
 
+    override suspend fun isBusy(): Boolean = false
+
     override suspend fun startCall(callerId: String, calleeId: String) {
         val familyId = prefs.familyId ?: throw LocalConnectException("ペアリングされていません")
         val token = prefs.localAuthToken ?: throw LocalConnectException("ペアリング情報が壊れています")

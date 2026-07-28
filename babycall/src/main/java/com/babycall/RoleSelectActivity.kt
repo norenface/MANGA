@@ -7,6 +7,7 @@ import com.babycall.databinding.ActivityRoleSelectBinding
 import com.babycall.home.BabyHomeActivity
 import com.babycall.home.ParentHomeActivity
 import com.babycall.pairing.BabySetupActivity
+import com.babycall.pairing.JoinFamilyActivity
 import com.babycall.pairing.ParentSetupActivity
 
 class RoleSelectActivity : AppCompatActivity() {
@@ -31,6 +32,9 @@ class RoleSelectActivity : AppCompatActivity() {
 
         binding.btnParent.setOnClickListener {
             startActivity(Intent(this, ParentSetupActivity::class.java))
+        }
+        binding.btnJoinFamily.setOnClickListener {
+            startActivity(Intent(this, JoinFamilyActivity::class.java))
         }
         binding.btnBaby.setOnClickListener {
             startActivity(Intent(this, BabySetupActivity::class.java))

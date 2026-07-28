@@ -50,6 +50,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".pairing.JoinFamilyActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".home.ParentHomeActivity"
             android:exported="false" />
 

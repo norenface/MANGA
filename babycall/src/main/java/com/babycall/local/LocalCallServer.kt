@@ -168,6 +168,8 @@ class LocalCallServer(private val context: Context, private val prefs: Prefs) : 
         iceCb = onCandidate
     }
 
+    override suspend fun isBusy(): Boolean = false
+
     override suspend fun startCall(callerId: String, calleeId: String) {
         // The baby device never originates a call in this design.
     }
