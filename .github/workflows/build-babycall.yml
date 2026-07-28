@@ -1,0 +1,51 @@
+name: Build BabyCall
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'babycall/**'
+      - 'settings.gradle'
+      - 'build.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/build-babycall.yml'
+  pull_request:
+    paths:
+      - 'babycall/**'
+      - 'settings.gradle'
+      - 'build.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/build-babycall.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build BabyCall debug APK
+        run: ./gradlew :babycall:assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: babycall-debug-apk
+          path: babycall/build/outputs/apk/debug/babycall-debug.apk
+          if-no-files-found: error
