@@ -62,7 +62,7 @@ dependencies {
     implementation 'com.google.firebase:firebase-auth-ktx'
 
     // WebRTC (maintained Maven Central mirror of Google's org.webrtc)
-    implementation 'io.github.webrtc-sdk:android:125.6422.07.1'
+    implementation 'io.github.webrtc-sdk:android:125.6422.07'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
