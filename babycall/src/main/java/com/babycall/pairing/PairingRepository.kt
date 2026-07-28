@@ -27,7 +27,7 @@ class PairingException(message: String) : Exception(message)
  */
 class PairingRepository {
 
-    private val db: FirebaseDatabase = Firebase.database
+    private val db: FirebaseDatabase by lazy { Firebase.database }
     private val root get() = db.reference
 
     suspend fun createFamily(deviceId: String, parentName: String): String {
