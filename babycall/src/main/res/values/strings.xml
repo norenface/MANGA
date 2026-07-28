@@ -73,6 +73,8 @@
     <string name="baby_not_connected">赤ちゃん端末が未接続です。下のボタンで番号を発行してください。</string>
     <string name="baby_not_connected_local">赤ちゃん端末が未接続です。最初のセットアップをやり直してペアリングしてください。</string>
     <string name="button_generate_pairing_code">ペアリング番号を発行する</string>
+    <string name="online_status_ready">外出先からの通話: 対応(自宅Wi-Fiで前回確認済み)</string>
+    <string name="online_status_unknown">外出先からの通話: 未確認(赤ちゃん端末と同じWi-Fiで一度呼びかけると確認されます)</string>
     <string name="content_desc_settings">設定</string>
 
     <!-- Settings -->

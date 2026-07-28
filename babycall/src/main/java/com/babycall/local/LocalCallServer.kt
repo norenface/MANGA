@@ -58,7 +58,12 @@ class LocalCallServer(private val context: Context, private val prefs: Prefs) : 
         val familyId = prefs.familyId ?: return
         running = true
 
-        val socket = ServerSocket(0)
+        val socket = try {
+            ServerSocket(LocalProtocol.CALL_PORT)
+        } catch (e: Exception) {
+            Log.w(TAG, "fixed call port unavailable, falling back to ephemeral (online/cross-network calling disabled this run): ${e.message}")
+            ServerSocket(0)
+        }
         serverSocket = socket
 
         acceptThread = thread(name = "LocalCallServer-accept") {
@@ -74,6 +79,23 @@ class LocalCallServer(private val context: Context, private val prefs: Prefs) : 
         }
 
         registerNsd(familyId, socket.localPort)
+        if (socket.localPort == LocalProtocol.CALL_PORT) setupOnlineAccess(socket.localPort)
+    }
+
+    /**
+     * Best-effort: opens this port on the home router (UPnP) and learns our
+     * own public IP (STUN) so a family member who isn't on this Wi-Fi can
+     * still reach this device. Neither step needs any account or server of
+     * ours -- both are standard, anonymous protocols. If either fails (UPnP
+     * disabled on the router, carrier-grade NAT, ...) [Prefs.myPublicHost]
+     * simply stays null and same-Wi-Fi calling is unaffected.
+     */
+    private fun setupOnlineAccess(port: Int) {
+        thread(name = "LocalCallServer-online-setup") {
+            val mapped = UpnpPortMapper.mapPort(context, port, port, "BabyCall")
+            val publicIp = StunClient.discoverPublicIp()
+            prefs.myPublicHost = if (mapped && publicIp != null) "$publicIp:$port" else null
+        }
     }
 
     private fun handleConnection(rawSocket: Socket, familyId: String) {
@@ -94,7 +116,11 @@ class LocalCallServer(private val context: Context, private val prefs: Prefs) : 
                     }
                     helloOk = true
                     rawSocket.soTimeout = 0
-                    conn.send(JSONObject().put("type", LocalProtocol.MSG_HELLO_OK))
+                    conn.send(
+                        JSONObject()
+                            .put("type", LocalProtocol.MSG_HELLO_OK)
+                            .put("publicHost", prefs.myPublicHost ?: "")
+                    )
                     // Only one call peer is supported at a time; replace any stale connection.
                     activeConnection?.close()
                     activeConnection = conn
@@ -231,6 +257,7 @@ class LocalCallServer(private val context: Context, private val prefs: Prefs) : 
     @Synchronized
     fun stop() {
         running = false
+        val port = serverSocket?.localPort
         runCatching { serverSocket?.close() }
         registrationListener?.let { listener ->
             val nsdManager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager
@@ -240,6 +267,10 @@ class LocalCallServer(private val context: Context, private val prefs: Prefs) : 
         activeConnection = null
         serverSocket = null
         registrationListener = null
+        prefs.myPublicHost = null
+        if (port == LocalProtocol.CALL_PORT) {
+            thread(name = "LocalCallServer-upnp-cleanup") { UpnpPortMapper.unmapPort(context, port) }
+        }
     }
 
     companion object {

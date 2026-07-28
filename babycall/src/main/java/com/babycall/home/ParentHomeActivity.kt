@@ -65,6 +65,14 @@ class ParentHomeActivity : AppCompatActivity() {
             binding.tvBabyStatus.text = getString(
                 if (paired) R.string.baby_connected else R.string.baby_not_connected_local
             )
+            if (paired) {
+                binding.tvOnlineStatus.visibility = android.view.View.VISIBLE
+                binding.tvOnlineStatus.text = getString(
+                    if (prefs.peerPublicHost != null) R.string.online_status_ready else R.string.online_status_unknown
+                )
+            } else {
+                binding.tvOnlineStatus.visibility = android.view.View.GONE
+            }
             return
         }
 

@@ -8,6 +8,15 @@ object LocalProtocol {
     /** mDNS service type the parent device advertises while showing a pairing code. */
     const val PAIRING_SERVICE_TYPE = "_babycallpair._tcp."
 
+    /**
+     * Fixed TCP port for the baby device's call server. Local (same-Wi-Fi)
+     * connections still find it via mDNS regardless of port, but a fixed
+     * port is required so it can be forwarded on the home router for
+     * cross-network ("online") reach -- an ephemeral port chosen at random
+     * on every start couldn't be forwarded reliably.
+     */
+    const val CALL_PORT = 47651
+
     fun callServiceName(familyId: String): String = "babycall-$familyId"
     fun pairingServiceName(sessionId: String): String = "babycallpair-$sessionId"
 

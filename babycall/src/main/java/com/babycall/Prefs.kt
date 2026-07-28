@@ -68,6 +68,23 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_PEER_DEVICE_ID, null)
         set(value) = sp.edit().putString(KEY_PEER_DEVICE_ID, value).apply()
 
+    /** Baby device only: this device's own "ip:port" as last seen from the
+     *  internet, if UPnP + STUN discovery succeeded on the current call
+     *  server start. Null means online (cross-network) reach isn't
+     *  available right now -- same-Wi-Fi calling still works either way. */
+    var myPublicHost: String?
+        get() = sp.getString(KEY_MY_PUBLIC_HOST, null)
+        set(value) = sp.edit().putString(KEY_MY_PUBLIC_HOST, value).apply()
+
+    /** Parent device only: the baby device's last known "ip:port" from the
+     *  internet, learned the last time both devices were on the same Wi-Fi.
+     *  Used as a fallback connection target when mDNS discovery finds
+     *  nothing (i.e. the parent is out of the house). May go stale if the
+     *  baby's home internet address changes before the next same-Wi-Fi sync. */
+    var peerPublicHost: String?
+        get() = sp.getString(KEY_PEER_PUBLIC_HOST, null)
+        set(value) = sp.edit().putString(KEY_PEER_PUBLIC_HOST, value).apply()
+
     val isPaired: Boolean
         get() = !familyId.isNullOrEmpty() && !role.isNullOrEmpty()
 
@@ -79,6 +96,8 @@ class Prefs(context: Context) {
             .remove(KEY_TRANSPORT_MODE)
             .remove(KEY_LOCAL_AUTH_TOKEN)
             .remove(KEY_PEER_DEVICE_ID)
+            .remove(KEY_MY_PUBLIC_HOST)
+            .remove(KEY_PEER_PUBLIC_HOST)
             .apply()
     }
 
@@ -97,6 +116,8 @@ class Prefs(context: Context) {
         private const val KEY_TRANSPORT_MODE = "transport_mode"
         private const val KEY_LOCAL_AUTH_TOKEN = "local_auth_token"
         private const val KEY_PEER_DEVICE_ID = "peer_device_id"
+        private const val KEY_MY_PUBLIC_HOST = "my_public_host"
+        private const val KEY_PEER_PUBLIC_HOST = "peer_public_host"
 
         const val TRANSPORT_CLOUD = "cloud"
         const val TRANSPORT_LOCAL = "local"

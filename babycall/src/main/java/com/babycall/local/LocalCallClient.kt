@@ -47,11 +47,19 @@ class LocalCallClient(private val context: Context, private val prefs: Prefs) : 
         val token = prefs.localAuthToken ?: throw LocalConnectException("ペアリング情報が壊れています")
 
         val serviceInfo = LocalDiscovery.resolveBabyAddress(context, familyId)
-            ?: throw LocalConnectException("赤ちゃん端末が見つかりません。同じWi-Fiに接続されているか確認してください。")
+        val (host, port) = if (serviceInfo != null) {
+            serviceInfo.host.hostAddress!! to serviceInfo.port
+        } else {
+            val fallback = prefs.peerPublicHost
+                ?: throw LocalConnectException("赤ちゃん端末が見つかりません。同じWi-Fiに接続されているか確認してください。")
+            val parts = fallback.split(":")
+            if (parts.size != 2) throw LocalConnectException("赤ちゃん端末が見つかりません。同じWi-Fiに接続されているか確認してください。")
+            parts[0] to (parts[1].toIntOrNull() ?: LocalProtocol.CALL_PORT)
+        }
 
         withContext(Dispatchers.IO) {
             val socket = Socket()
-            socket.connect(InetSocketAddress(serviceInfo.host, serviceInfo.port), CONNECT_TIMEOUT_MS)
+            socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
             val conn = JsonSocketConnection(socket)
             connection = conn
 
@@ -64,6 +72,7 @@ class LocalCallClient(private val context: Context, private val prefs: Prefs) : 
                 connection = null
                 throw LocalConnectException("赤ちゃん端末との接続が拒否されました。PINやペアリング状態を確認してください。")
             }
+            resp.optString("publicHost").takeIf { it.isNotEmpty() }?.let { prefs.peerPublicHost = it }
 
             thread(name = "LocalCallClient-read") {
                 conn.readLoop { msg -> handleMessage(msg) }
