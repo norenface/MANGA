@@ -29,10 +29,10 @@
             android:textSize="15sp" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnParent"
+            android:id="@+id/btnBaby"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:text="@string/role_select_parent_button"
+            android:text="@string/role_select_baby_button"
             android:textSize="16sp" />
 
         <com.google.android.material.button.MaterialButton
@@ -42,15 +42,6 @@
             android:layout_marginTop="16dp"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:text="@string/role_select_join_family_button"
-            android:textSize="16sp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnBaby"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:layout_marginTop="16dp"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:text="@string/role_select_baby_button"
             android:textSize="16sp" />
 
     </LinearLayout>

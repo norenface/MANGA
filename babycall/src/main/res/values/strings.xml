@@ -4,46 +4,39 @@
 
     <!-- Role select -->
     <string name="role_select_subtitle">赤ちゃんが勝手に切ったり、他の人に電話をかけたりできない、安心のビデオ通話アプリです。</string>
-    <string name="role_select_parent_button">保護者として設定する</string>
-    <string name="role_select_join_family_button">招待コードで家族に参加する(離れて暮らすご家族向け)</string>
+    <string name="role_select_join_family_button">通話に参加する(番号を入力)</string>
     <string name="role_select_baby_button">赤ちゃんの端末として設定する</string>
-
-    <!-- Parent setup -->
-    <string name="parent_setup_title">保護者の設定</string>
-    <string name="parent_setup_subtitle">お名前と、通話終了やペアリング解除に使う暗証番号(PIN)を設定してください。</string>
-    <string name="hint_parent_name">お名前(例:ママ)</string>
-    <string name="hint_pin">暗証番号(4〜6桁)</string>
-    <string name="hint_pin_confirm">暗証番号(確認)</string>
-    <string name="pin_explanation">このPINは赤ちゃん端末で通話を終了したり、設定を解除したりする際に必要です。赤ちゃんには教えないでください。</string>
-    <string name="button_create_family">作成する</string>
-    <string name="label_transport_mode">接続方式</string>
-    <string name="transport_mode_cloud">インターネット(どこからでも呼びかけ可能・アカウント不要)</string>
-    <string name="transport_mode_local">ローカル(自宅Wi-Fi内のみ・アカウント不要)</string>
-    <string name="error_pairing_wrong_code_attempt">番号が違う端末から接続がありました。番号を再確認してください。</string>
-    <string name="status_searching_parent">保護者の端末を探しています…</string>
-    <string name="error_no_parent_found">保護者の端末が見つかりませんでした。同じWi-Fiに接続し、保護者側でペアリング画面を開いているか確認してください。</string>
-    <string name="pick_parent_title">どの端末に接続しますか?</string>
-    <string name="pairing_code_title">この番号を赤ちゃん端末に入力してください</string>
-    <string name="pairing_code_instructions">赤ちゃん端末のアプリを開き「赤ちゃんの端末として設定する」を選んでこの番号を入力すると、ペアリングが完了します。番号の有効期限は10分です。</string>
-    <string name="button_go_home">ホームへ</string>
 
     <!-- Baby setup -->
     <string name="baby_setup_title">赤ちゃん端末の設定</string>
-    <string name="baby_setup_subtitle">保護者の端末に表示された番号を入力してください。この端末は、この番号で接続した保護者からの通話にしか応答できなくなります。</string>
+    <string name="baby_setup_subtitle">この端末を赤ちゃん専用にします。名前とPINを入力してください。あとで表示される番号を、通話したいご家族に伝えます。</string>
     <string name="hint_baby_name">呼び名(例:ゆうくん)</string>
-    <string name="hint_pairing_code">ペアリング番号</string>
+    <string name="hint_pin">暗証番号(4〜6桁)</string>
+    <string name="hint_pin_confirm">暗証番号(確認)</string>
+    <string name="pin_explanation">このPINは赤ちゃん端末で通話を終了したり、設定を解除したりする際に必要です。赤ちゃんには教えないでください。</string>
+    <string name="label_transport_mode">接続方式</string>
+    <string name="transport_mode_cloud">インターネット(どこからでも呼びかけ可能・アカウント不要)</string>
+    <string name="transport_mode_local">ローカル(自宅Wi-Fi内のみ・アカウント不要)</string>
     <string name="warning_permissions_required">通話にはカメラとマイクの権限が必要です。設定から許可してください。</string>
-    <string name="button_connect">つなぐ</string>
+    <string name="button_setup_baby">この端末を設定する</string>
+    <string name="error_pairing_wrong_code_attempt">番号が違う端末から接続がありました。番号を再確認してください。</string>
+    <string name="button_go_home">ホームへ</string>
+    <string name="baby_code_title">この番号をご家族に伝えてください</string>
+    <string name="baby_code_instructions_waiting">同じWi-Fi内で、この番号を伝えたい方に「通話に参加する」から入力してもらってください。入力が完了するまでこの画面を閉じないでください。</string>
+    <string name="baby_code_instructions_ready">この番号はずっと使えます。通話したいご家族に伝えてください。相手はBabyCallアプリで「通話に参加する」を選び、この番号を入力するだけで、いつでも赤ちゃんに呼びかけられるようになります。</string>
 
-    <!-- Join family (remote viewer, e.g. grandparent/uncle) -->
-    <string name="join_family_title">家族に参加する</string>
-    <string name="join_family_subtitle">すでに設定済みの保護者アプリで発行された招待コードを入力してください。離れた場所からでも赤ちゃん端末に呼びかけられるようになります。</string>
-    <string name="hint_your_name">お名前(例:おじいちゃん)</string>
-    <string name="hint_invite_code">招待コード</string>
+    <!-- Join a call (any viewer -- parent, grandparent, ...) -->
+    <string name="join_family_title">通話に参加する</string>
+    <string name="join_family_subtitle">赤ちゃん端末に表示された番号を入力してください。以後、この端末からいつでも赤ちゃんに呼びかけられるようになります。</string>
+    <string name="hint_your_name">お名前(例:ママ)</string>
+    <string name="hint_invite_code">番号</string>
     <string name="button_join">参加する</string>
     <string name="button_invite_family">家族を招待する</string>
-    <string name="invite_dialog_title">この番号を招待したい方にお伝えください</string>
-    <string name="invite_dialog_message">%1$s\n\nこの番号はずっと使えます。招待された方がBabyCallアプリで「招待コードで家族に参加する」を選び、この番号を入力すると、その方の端末からも赤ちゃんに呼びかけられるようになります。通話中に後から入ることもできます。</string>
+    <string name="invite_dialog_title">この番号を伝えたい方にお伝えください</string>
+    <string name="invite_dialog_message">%1$s\n\nこの番号はずっと使えます。伝えた方がBabyCallアプリで「通話に参加する」を選び、この番号を入力すると、その方の端末からも赤ちゃんに呼びかけられるようになります。通話中に後から入ることもできます。</string>
+    <string name="status_searching_parent">赤ちゃん端末を探しています…</string>
+    <string name="error_no_parent_found">赤ちゃん端末が見つかりませんでした。同じWi-Fiに接続し、赤ちゃん端末側の画面が開いているか確認してください。</string>
+    <string name="pick_parent_title">どの端末に接続しますか?</string>
 
     <!-- Errors -->
     <string name="error_pin_format">PINは4〜6桁の数字で入力してください。</string>
@@ -51,7 +44,7 @@
     <string name="error_pin_incorrect">PINが違います。</string>
     <string name="error_code_format">正しい番号を入力してください。</string>
     <string name="error_generic">エラーが発生しました。もう一度お試しください。</string>
-    <string name="error_pairing_timeout">応答がありませんでした。保護者側の画面が開いているか、番号が正しいか確認してください。</string>
+    <string name="error_pairing_timeout">応答がありませんでした。番号が正しいか確認してください。</string>
     <string name="error_join_family_unreachable">赤ちゃん端末に接続できませんでした。赤ちゃん端末の電源が入っていて、インターネットに接続されているか確認してください。</string>
 
     <!-- Call screen -->

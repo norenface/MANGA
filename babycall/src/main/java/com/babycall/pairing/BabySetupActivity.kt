@@ -6,28 +6,29 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.call.CallListenerService
 import com.babycall.databinding.ActivityBabySetupBinding
 import com.babycall.home.BabyHomeActivity
-import com.babycall.local.DiscoveredParent
-import com.babycall.local.LocalPairingClient
-import com.babycall.peer.PeerPairingClient
+import com.babycall.local.LocalPairingHost
 import com.babycall.peer.PeerProtocol
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeout
-import kotlin.coroutines.resume
 
+/**
+ * Sets up this device as the baby's: generates the family's code itself
+ * (no separate "parent setup" step needed) and starts listening for
+ * whoever redeems it. Local mode hosts a live LAN pairing handshake (see
+ * [LocalPairingHost]); online mode has nothing to wait for since there's
+ * no server-side record to create -- the code is ready the moment it's
+ * generated.
+ */
 class BabySetupActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityBabySetupBinding
     private lateinit var prefs: Prefs
+    private var localHost: LocalPairingHost? = null
+    private var paired = false
 
     private val requiredPermissions = buildList {
         add(Manifest.permission.CAMERA)
@@ -56,115 +57,101 @@ class BabySetupActivity : AppCompatActivity() {
         }
         if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
 
-        binding.btnConnect.setOnClickListener { onConnectClicked() }
+        binding.btnCreateBaby.setOnClickListener { onCreateBabyClicked() }
+        binding.btnDone.setOnClickListener {
+            CallListenerService.start(this@BabySetupActivity)
+            startActivity(Intent(this@BabySetupActivity, BabyHomeActivity::class.java))
+            finish()
+        }
     }
 
-    private fun onConnectClicked() {
+    private fun onCreateBabyClicked() {
         val name = binding.etBabyName.text?.toString()?.trim().orEmpty().ifEmpty { "赤ちゃん" }
+        val pin = binding.etPin.text?.toString()?.trim().orEmpty()
+        val pinConfirm = binding.etPinConfirm.text?.toString()?.trim().orEmpty()
+        val isLocal = binding.radioLocal.isChecked
+
+        if (pin.length < 4 || pin.length > 6 || !pin.all { it.isDigit() }) {
+            showError(getString(R.string.error_pin_format))
+            return
+        }
+        if (pin != pinConfirm) {
+            showError(getString(R.string.error_pin_mismatch))
+            return
+        }
         binding.tvError.visibility = android.view.View.GONE
-        binding.btnConnect.isEnabled = false
+        binding.btnCreateBaby.isEnabled = false
 
-        if (binding.radioLocal.isChecked) {
-            val code = binding.etCode.text?.toString()?.replace(Regex("[^0-9]"), "").orEmpty()
-            if (code.length != 6) {
-                showError(getString(R.string.error_code_format))
-                binding.btnConnect.isEnabled = true
-                return
-            }
-            connectLocal(code, name)
+        if (isLocal) {
+            createBabyLocal(name, pin)
         } else {
-            val code = PeerProtocol.normalizeCode(binding.etCode.text?.toString().orEmpty())
-            if (code.length < 6) {
-                showError(getString(R.string.error_code_format))
-                binding.btnConnect.isEnabled = true
-                return
-            }
-            connectOnline(code, name)
+            createBabyOnline(name, pin)
         }
     }
 
-    private fun connectOnline(code: String, name: String) {
-        lifecycleScope.launch {
-            try {
-                val deviceId = prefs.deviceId
-                val paired = withTimeout(15000) { PeerPairingClient.redeem(code, deviceId, name) }
+    private fun createBabyLocal(name: String, pin: String) {
+        prefs.role = "baby"
+        prefs.transportMode = Prefs.TRANSPORT_LOCAL
+        prefs.deviceName = name
+        prefs.pinHash = Prefs.hashPin(pin)
+        prefs.autoAnswer = true
 
-                prefs.role = "baby"
-                prefs.transportMode = Prefs.TRANSPORT_CLOUD
-                prefs.familyId = paired.familyId
-                prefs.peerDeviceId = paired.parentDeviceId
-                prefs.deviceName = name
-                prefs.pinHash = paired.pinHash
-                prefs.autoAnswer = paired.autoAnswer
+        val host = LocalPairingHost(this)
+        localHost = host
+        prefs.familyId = host.familyId
+        prefs.localAuthToken = host.authToken
 
-                finishPairing()
-            } catch (e: TimeoutCancellationException) {
-                showError(getString(R.string.error_pairing_timeout))
-                binding.btnConnect.isEnabled = true
-            } catch (e: Exception) {
-                showError(e.message ?: getString(R.string.error_generic))
-                binding.btnConnect.isEnabled = true
-            }
-        }
-    }
-
-    private fun connectLocal(code: String, name: String) {
-        lifecycleScope.launch {
-            try {
-                binding.tvError.text = getString(R.string.status_searching_parent)
-                binding.tvError.visibility = android.view.View.VISIBLE
-                val hosts = LocalPairingClient.discoverHosts(this@BabySetupActivity)
-
-                val chosen: DiscoveredParent = when {
-                    hosts.isEmpty() -> {
-                        showError(getString(R.string.error_no_parent_found))
-                        binding.btnConnect.isEnabled = true
-                        return@launch
-                    }
-                    hosts.size == 1 -> hosts.first()
-                    else -> pickParent(hosts) ?: run {
-                        binding.btnConnect.isEnabled = true
-                        return@launch
-                    }
+        host.start(
+            hostName = name,
+            pinHash = Prefs.hashPin(pin),
+            autoAnswer = true,
+            hostDeviceId = prefs.deviceId,
+            onPaired = { _, redeemerDeviceId ->
+                runOnUiThread {
+                    paired = true
+                    prefs.peerDeviceId = redeemerDeviceId
+                    showCodeStep(host.code, connected = true)
                 }
-
-                val paired = LocalPairingClient.redeem(chosen, code, name, prefs.deviceId)
-
-                prefs.role = "baby"
-                prefs.transportMode = Prefs.TRANSPORT_LOCAL
-                prefs.familyId = paired.familyId
-                prefs.localAuthToken = paired.authToken
-                prefs.peerDeviceId = paired.parentDeviceId
-                prefs.deviceName = name
-                prefs.pinHash = paired.pinHash
-                prefs.autoAnswer = paired.autoAnswer
-
-                finishPairing()
-            } catch (e: Exception) {
-                showError(e.message ?: getString(R.string.error_generic))
-                binding.btnConnect.isEnabled = true
+            },
+            onRejectedAttempt = {
+                runOnUiThread { showError(getString(R.string.error_pairing_wrong_code_attempt)) }
             }
-        }
+        )
+
+        showCodeStep(host.code, connected = false)
     }
 
-    private suspend fun pickParent(hosts: List<DiscoveredParent>): DiscoveredParent? =
-        suspendCancellableCoroutine { cont ->
-            val names = hosts.map { it.displayName }.toTypedArray()
-            AlertDialog.Builder(this)
-                .setTitle(R.string.pick_parent_title)
-                .setItems(names) { _, which -> cont.resume(hosts[which]) }
-                .setOnCancelListener { cont.resume(null) }
-                .show()
-        }
+    private fun createBabyOnline(name: String, pin: String) {
+        prefs.role = "baby"
+        prefs.transportMode = Prefs.TRANSPORT_CLOUD
+        prefs.deviceName = name
+        prefs.pinHash = Prefs.hashPin(pin)
+        prefs.autoAnswer = true
 
-    private fun finishPairing() {
-        CallListenerService.start(this@BabySetupActivity)
-        startActivity(Intent(this@BabySetupActivity, BabyHomeActivity::class.java))
-        finish()
+        val code = PeerProtocol.randomFamilyCode()
+        prefs.familyId = code
+        paired = true
+
+        showCodeStep(code, connected = true)
     }
 
     private fun showError(message: String) {
         binding.tvError.text = message
         binding.tvError.visibility = android.view.View.VISIBLE
+    }
+
+    private fun showCodeStep(code: String, connected: Boolean) {
+        binding.groupInput.visibility = android.view.View.GONE
+        binding.groupCode.visibility = android.view.View.VISIBLE
+        binding.tvCode.text = code.chunked(3).joinToString(" ")
+        binding.tvCodeInstructions.text = getString(
+            if (connected) R.string.baby_code_instructions_ready else R.string.baby_code_instructions_waiting
+        )
+        binding.btnDone.isEnabled = connected
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (!paired) localHost?.stop()
     }
 }

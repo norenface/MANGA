@@ -11,9 +11,11 @@ import java.util.UUID
 import kotlin.concurrent.thread
 
 /**
- * Parent-side local pairing: shows a 6-digit code and waits for the baby
- * device to find it on the LAN (via mDNS) and redeem that code. Everything
- * here is generated on-device — no internet, no account needed.
+ * Local pairing host: shows a 6-digit code and waits for another device to
+ * find it on the LAN (via mDNS) and redeem that code. Everything here is
+ * generated on-device — no internet, no account needed. The baby device
+ * hosts (it's the one that stays put at home); whoever wants to be able to
+ * call it redeems the code via [LocalPairingClient].
  */
 class LocalPairingHost(private val context: Context) {
 
@@ -28,16 +30,16 @@ class LocalPairingHost(private val context: Context) {
 
     /**
      * Starts listening and advertising. [onPaired] fires once, on a
-     * background thread, when a baby device redeems the correct code.
+     * background thread, when a viewer device redeems the correct code.
      * [onRejectedAttempt] fires (repeatedly) on a wrong-code attempt so the
      * caller can keep the screen open for a retry.
      */
     fun start(
-        parentName: String,
+        hostName: String,
         pinHash: String,
         autoAnswer: Boolean,
-        parentDeviceId: String,
-        onPaired: (babyName: String, babyDeviceId: String) -> Unit,
+        hostDeviceId: String,
+        onPaired: (redeemerName: String, redeemerDeviceId: String) -> Unit,
         onRejectedAttempt: () -> Unit
     ) {
         val socket = ServerSocket(0)
@@ -61,8 +63,8 @@ class LocalPairingHost(private val context: Context) {
                         }
                         val expired = System.currentTimeMillis() - createdAt > CODE_EXPIRY_MS
                         val theirCode = msg.optString("code")
-                        val babyName = msg.optString("babyName").ifEmpty { "赤ちゃん" }
-                        val babyDeviceId = msg.optString("deviceId")
+                        val redeemerName = msg.optString("babyName").ifEmpty { "家族" }
+                        val redeemerDeviceId = msg.optString("deviceId")
 
                         if (expired || theirCode != code) {
                             conn.send(JSONObject().put("type", LocalProtocol.MSG_PAIR_REJECT))
@@ -76,13 +78,13 @@ class LocalPairingHost(private val context: Context) {
                                 .put("type", LocalProtocol.MSG_PAIRED)
                                 .put("familyId", familyId)
                                 .put("token", authToken)
-                                .put("parentDeviceId", parentDeviceId)
-                                .put("parentName", parentName)
+                                .put("parentDeviceId", hostDeviceId)
+                                .put("parentName", hostName)
                                 .put("pinHash", pinHash)
                                 .put("autoAnswer", autoAnswer)
                         )
                         conn.close()
-                        onPaired(babyName, babyDeviceId)
+                        onPaired(redeemerName, redeemerDeviceId)
                     } catch (e: Exception) {
                         Log.d(TAG, "pairing connection error: ${e.message}")
                         conn.close()
@@ -91,16 +93,16 @@ class LocalPairingHost(private val context: Context) {
             }
         }
 
-        registerNsd(parentName, socket.localPort)
+        registerNsd(hostName, socket.localPort)
     }
 
-    private fun registerNsd(parentName: String, port: Int) {
+    private fun registerNsd(hostName: String, port: Int) {
         val nsdManager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
         val serviceInfo = NsdServiceInfo().apply {
             serviceName = LocalProtocol.pairingServiceName(familyId)
             serviceType = LocalProtocol.PAIRING_SERVICE_TYPE
             this.port = port
-            setAttribute("name", parentName)
+            setAttribute("name", hostName)
         }
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(info: NsdServiceInfo) {}

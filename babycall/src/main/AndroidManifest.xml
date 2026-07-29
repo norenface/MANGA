@@ -40,10 +40,6 @@
         </activity>
 
         <activity
-            android:name=".pairing.ParentSetupActivity"
-            android:exported="false" />
-
-        <activity
             android:name=".pairing.BabySetupActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

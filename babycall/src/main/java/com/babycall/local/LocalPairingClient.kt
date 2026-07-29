@@ -17,16 +17,16 @@ data class DiscoveredParent(
 data class LocalPairedInfo(
     val familyId: String,
     val authToken: String,
-    val parentDeviceId: String,
-    val parentName: String,
+    val hostDeviceId: String,
+    val hostName: String,
     val pinHash: String?,
     val autoAnswer: Boolean
 )
 
-/** Baby-side local pairing: finds parent device(s) currently showing a pairing code, then redeems one. */
+/** Viewer-side local pairing: finds the baby device currently showing a pairing code (via [LocalPairingHost]), then redeems it. */
 object LocalPairingClient {
 
-    /** Scans for [timeoutMs] and returns every parent device found showing a pairing code. */
+    /** Scans for [timeoutMs] and returns every device found currently showing a pairing code. */
     suspend fun discoverHosts(context: Context, timeoutMs: Long = 5000): List<DiscoveredParent> {
         val nsdManager = context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
             ?: return emptyList()
@@ -80,7 +80,7 @@ object LocalPairingClient {
         return results
     }
 
-    suspend fun redeem(parent: DiscoveredParent, code: String, babyName: String, babyDeviceId: String): LocalPairedInfo {
+    suspend fun redeem(parent: DiscoveredParent, code: String, myName: String, myDeviceId: String): LocalPairedInfo {
         val socket = Socket()
         return try {
             socket.connect(InetSocketAddress(parent.serviceInfo.host, parent.serviceInfo.port), 6000)
@@ -89,8 +89,8 @@ object LocalPairingClient {
                 JSONObject()
                     .put("type", LocalProtocol.MSG_REDEEM)
                     .put("code", code)
-                    .put("babyName", babyName)
-                    .put("deviceId", babyDeviceId)
+                    .put("babyName", myName)
+                    .put("deviceId", myDeviceId)
             )
             socket.soTimeout = 6000
             val resp = conn.readOneBlocking()
@@ -100,12 +100,12 @@ object LocalPairingClient {
                 LocalProtocol.MSG_PAIRED -> LocalPairedInfo(
                     familyId = resp.getString("familyId"),
                     authToken = resp.getString("token"),
-                    parentDeviceId = resp.getString("parentDeviceId"),
-                    parentName = resp.optString("parentName"),
+                    hostDeviceId = resp.getString("parentDeviceId"),
+                    hostName = resp.optString("parentName"),
                     pinHash = resp.optString("pinHash").ifEmpty { null },
                     autoAnswer = resp.optBoolean("autoAnswer", true)
                 )
-                LocalProtocol.MSG_PAIR_REJECT -> throw LocalConnectException("番号が違います。保護者の画面を確認してください。")
+                LocalProtocol.MSG_PAIR_REJECT -> throw LocalConnectException("番号が違います。表示されている番号を確認してください。")
                 else -> throw LocalConnectException("予期しない応答でした。")
             }
         } finally {
