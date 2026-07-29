@@ -25,7 +25,7 @@
     <string name="baby_code_instructions_waiting">同じWi-Fi内で、この番号を伝えたい方に「通話に参加する」から入力してもらってください。入力が完了するまでこの画面を閉じないでください。</string>
     <string name="baby_code_instructions_ready">この番号はずっと使えます。通話したいご家族に伝えてください。相手はBabyCallアプリで「通話に参加する」を選び、この番号を入力するだけで、いつでも赤ちゃんに呼びかけられるようになります。</string>
 
-    <!-- Join a call (any viewer -- parent, grandparent, ...) -->
+    <!-- Join a call (any viewer: parent, grandparent, ...) -->
     <string name="join_family_title">通話に参加する</string>
     <string name="join_family_subtitle">赤ちゃん端末に表示された番号を入力してください。以後、この端末からいつでも赤ちゃんに呼びかけられるようになります。</string>
     <string name="hint_your_name">お名前(例:ママ)</string>
