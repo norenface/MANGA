@@ -4,26 +4,21 @@ import android.content.Context
 import com.babycall.Prefs
 import com.babycall.local.LocalCallClient
 import com.babycall.local.LocalCallServerHolder
-import com.babycall.webrtc.SignalingRepository
 
 /**
- * Builds a single-session [CallSignaling] for whichever device is calling
- * this: a viewer (in either mode), or the baby device in *local* mode only.
- * The baby device in *cloud* mode does not use this factory at all — it
- * juggles many sessions at once via [com.babycall.webrtc.SignalingRoomRepository]
- * instead (see CallActivity).
+ * Builds a single-session [CallSignaling] for local (same-Wi-Fi) mode: the
+ * baby device (a persistent, single-viewer server) or a viewer (a client
+ * that discovers it via mDNS). Online mode does not use this factory — see
+ * [com.babycall.peer.PeerHubHolder] (baby, many simultaneous viewers) and
+ * [com.babycall.peer.PeerViewerConnection] (viewer) instead, both wired
+ * directly in CallActivity.
  */
 object SignalingFactory {
     fun create(context: Context, prefs: Prefs): CallSignaling {
-        return if (prefs.isLocalMode) {
-            if (prefs.role == "baby") {
-                LocalCallServerHolder.getOrCreate(context, prefs)
-            } else {
-                LocalCallClient(context, prefs)
-            }
+        return if (prefs.role == "baby") {
+            LocalCallServerHolder.getOrCreate(context, prefs)
         } else {
-            val familyId = prefs.familyId ?: error("not paired")
-            SignalingRepository(familyId, sessionId = prefs.deviceId)
+            LocalCallClient(context, prefs)
         }
     }
 }

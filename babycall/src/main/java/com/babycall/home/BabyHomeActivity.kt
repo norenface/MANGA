@@ -5,17 +5,14 @@ import android.os.Bundle
 import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import com.babycall.AuthGate
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.RoleSelectActivity
 import com.babycall.call.CallListenerService
 import com.babycall.databinding.ActivityBabyHomeBinding
 import com.babycall.local.LocalCallServerHolder
-import com.babycall.pairing.PairingRepository
+import com.babycall.peer.PeerHubHolder
 import com.babycall.security.PinDialog
-import kotlinx.coroutines.launch
 
 /**
  * Idle "waiting" screen shown on the baby device between calls. It is
@@ -27,7 +24,6 @@ class BabyHomeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityBabyHomeBinding
     private lateinit var prefs: Prefs
-    private val repo = PairingRepository()
 
     private var holdRunnable: Runnable? = null
     private val holdHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -74,46 +70,22 @@ class BabyHomeActivity : AppCompatActivity() {
     }
 
     private fun showExitPin() {
-        val familyId = prefs.familyId ?: return
-
-        if (prefs.isLocalMode) {
-            val pinHash = prefs.pinHash ?: return
-            PinDialog.show(this, titleRes = R.string.pin_dialog_unpair_title) { rawPin ->
-                val ok = Prefs.hashPin(rawPin) == pinHash
-                if (ok) doLocalUnpair()
-                ok
-            }
-            return
-        }
-
-        lifecycleScope.launch {
-            AuthGate.ensureSignedIn()
-            val pinHash = runCatching { repo.getSettings(familyId).pinHash }.getOrNull()
-            if (pinHash == null) return@launch
-
-            PinDialog.show(this@BabyHomeActivity, titleRes = R.string.pin_dialog_unpair_title) { rawPin ->
-                val ok = Prefs.hashPin(rawPin) == pinHash
-                if (ok) {
-                    lifecycleScope.launch {
-                        runCatching { repo.unpairDevice(familyId, prefs.deviceId) }
-                        prefs.clearPairing()
-                        stopService(Intent(this@BabyHomeActivity, CallListenerService::class.java))
-                        try {
-                            stopLockTask()
-                        } catch (_: Exception) {
-                        }
-                        startActivity(Intent(this@BabyHomeActivity, RoleSelectActivity::class.java))
-                        finish()
-                    }
-                }
-                ok
-            }
+        val pinHash = prefs.pinHash ?: return
+        PinDialog.show(this, titleRes = R.string.pin_dialog_unpair_title) { rawPin ->
+            val ok = Prefs.hashPin(rawPin) == pinHash
+            if (ok) doUnpair()
+            ok
         }
     }
 
-    private fun doLocalUnpair() {
+    private fun doUnpair() {
+        val wasLocalMode = prefs.isLocalMode
         prefs.clearPairing()
-        LocalCallServerHolder.stop()
+        if (wasLocalMode) {
+            LocalCallServerHolder.stop()
+        } else {
+            PeerHubHolder.stop()
+        }
         stopService(Intent(this, CallListenerService::class.java))
         try {
             stopLockTask()

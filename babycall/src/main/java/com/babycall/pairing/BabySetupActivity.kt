@@ -9,7 +9,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.babycall.AuthGate
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.call.CallListenerService
@@ -17,15 +16,18 @@ import com.babycall.databinding.ActivityBabySetupBinding
 import com.babycall.home.BabyHomeActivity
 import com.babycall.local.DiscoveredParent
 import com.babycall.local.LocalPairingClient
+import com.babycall.peer.PeerPairingClient
+import com.babycall.peer.PeerProtocol
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
 
 class BabySetupActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityBabySetupBinding
     private lateinit var prefs: Prefs
-    private val repo = PairingRepository()
 
     private val requiredPermissions = buildList {
         add(Manifest.permission.CAMERA)
@@ -58,41 +60,47 @@ class BabySetupActivity : AppCompatActivity() {
     }
 
     private fun onConnectClicked() {
-        val code = binding.etCode.text?.toString()?.replace(Regex("[^0-9]"), "").orEmpty()
         val name = binding.etBabyName.text?.toString()?.trim().orEmpty().ifEmpty { "赤ちゃん" }
-
-        if (code.length != 6) {
-            showError(getString(R.string.error_code_format))
-            return
-        }
         binding.tvError.visibility = android.view.View.GONE
         binding.btnConnect.isEnabled = false
 
         if (binding.radioLocal.isChecked) {
+            val code = binding.etCode.text?.toString()?.replace(Regex("[^0-9]"), "").orEmpty()
+            if (code.length != 6) {
+                showError(getString(R.string.error_code_format))
+                binding.btnConnect.isEnabled = true
+                return
+            }
             connectLocal(code, name)
         } else {
-            connectCloud(code, name)
+            val code = PeerProtocol.normalizeCode(binding.etCode.text?.toString().orEmpty())
+            if (code.length < 6) {
+                showError(getString(R.string.error_code_format))
+                binding.btnConnect.isEnabled = true
+                return
+            }
+            connectOnline(code, name)
         }
     }
 
-    private fun connectCloud(code: String, name: String) {
+    private fun connectOnline(code: String, name: String) {
         lifecycleScope.launch {
             try {
-                AuthGate.ensureSignedIn()
                 val deviceId = prefs.deviceId
-                val familyId = repo.redeemPairingCode(code, deviceId, name)
-                val settings = runCatching { repo.getSettings(familyId) }.getOrNull()
+                val paired = withTimeout(15000) { PeerPairingClient.redeem(code, deviceId, name) }
 
                 prefs.role = "baby"
                 prefs.transportMode = Prefs.TRANSPORT_CLOUD
-                prefs.familyId = familyId
+                prefs.familyId = paired.familyId
+                prefs.peerDeviceId = paired.parentDeviceId
                 prefs.deviceName = name
-                if (settings != null) {
-                    prefs.pinHash = settings.pinHash
-                    prefs.autoAnswer = settings.autoAnswer
-                }
+                prefs.pinHash = paired.pinHash
+                prefs.autoAnswer = paired.autoAnswer
 
                 finishPairing()
+            } catch (e: TimeoutCancellationException) {
+                showError(getString(R.string.error_pairing_timeout))
+                binding.btnConnect.isEnabled = true
             } catch (e: Exception) {
                 showError(e.message ?: getString(R.string.error_generic))
                 binding.btnConnect.isEnabled = true

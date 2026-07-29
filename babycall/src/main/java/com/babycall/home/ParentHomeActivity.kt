@@ -8,20 +8,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import com.babycall.AuthGate
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.call.CallActivity
 import com.babycall.databinding.ActivityParentHomeBinding
-import com.babycall.pairing.PairingRepository
-import kotlinx.coroutines.launch
 
 class ParentHomeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityParentHomeBinding
     private lateinit var prefs: Prefs
-    private val repo = PairingRepository()
     private var babyDeviceId: String? = null
 
     private val permissionLauncher = registerForActivityResult(
@@ -40,7 +35,6 @@ class ParentHomeActivity : AppCompatActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         binding.btnCall.setOnClickListener { onCallClicked() }
-        binding.btnGeneratePairingCode.setOnClickListener { generateCode() }
         binding.btnInviteFamily.setOnClickListener { onInviteFamilyClicked() }
         binding.btnInviteFamily.visibility =
             if (prefs.isLocalMode) android.view.View.GONE else android.view.View.VISIBLE
@@ -56,15 +50,32 @@ class ParentHomeActivity : AppCompatActivity() {
     private fun refreshBabyStatus() {
         val familyId = prefs.familyId ?: return
 
+        // Both modes cache the paired baby's identity locally from pairing
+        // time -- neither has a server-side directory to look this up live,
+        // so "paired" here means "successfully paired at some point", not
+        // "currently reachable this instant" (that's only known once you
+        // actually try to call).
+        babyDeviceId = prefs.peerDeviceId
+        val paired = babyDeviceId != null
+        binding.groupNoBaby.visibility = if (paired) android.view.View.GONE else android.view.View.VISIBLE
+        binding.btnGeneratePairingCode.visibility = android.view.View.GONE
+        binding.btnCall.isEnabled = paired
+        binding.tvBabyStatus.text = getString(
+            when {
+                paired -> R.string.baby_connected
+                prefs.isLocalMode -> R.string.baby_not_connected_local
+                else -> R.string.baby_not_connected
+            }
+        )
+
+        if (!paired && !prefs.isLocalMode) {
+            // The family code never expires, so the same one shown at setup
+            // time still works for a baby device that hasn't redeemed it yet.
+            binding.tvGeneratedCode.text = familyId.chunked(3).joinToString(" ")
+            binding.tvGeneratedCode.visibility = android.view.View.VISIBLE
+        }
+
         if (prefs.isLocalMode) {
-            babyDeviceId = prefs.peerDeviceId
-            val paired = babyDeviceId != null
-            binding.groupNoBaby.visibility = if (paired) android.view.View.GONE else android.view.View.VISIBLE
-            binding.btnGeneratePairingCode.visibility = android.view.View.GONE
-            binding.btnCall.isEnabled = paired
-            binding.tvBabyStatus.text = getString(
-                if (paired) R.string.baby_connected else R.string.baby_not_connected_local
-            )
             if (paired) {
                 binding.tvOnlineStatus.visibility = android.view.View.VISIBLE
                 binding.tvOnlineStatus.text = getString(
@@ -73,51 +84,16 @@ class ParentHomeActivity : AppCompatActivity() {
             } else {
                 binding.tvOnlineStatus.visibility = android.view.View.GONE
             }
-            return
-        }
-
-        lifecycleScope.launch {
-            AuthGate.ensureSignedIn()
-            babyDeviceId = repo.findBabyDeviceId(familyId)
-            val paired = babyDeviceId != null
-            binding.groupNoBaby.visibility = if (paired) android.view.View.GONE else android.view.View.VISIBLE
-            binding.btnCall.isEnabled = paired
-            binding.tvBabyStatus.text = if (paired) {
-                getString(R.string.baby_connected)
-            } else {
-                getString(R.string.baby_not_connected)
-            }
-        }
-    }
-
-    private fun generateCode() {
-        val familyId = prefs.familyId ?: return
-        lifecycleScope.launch {
-            AuthGate.ensureSignedIn()
-            val code = repo.generatePairingCode(familyId)
-            binding.tvGeneratedCode.text = code.chunked(3).joinToString(" ")
-            binding.tvGeneratedCode.visibility = android.view.View.VISIBLE
         }
     }
 
     private fun onInviteFamilyClicked() {
         val familyId = prefs.familyId ?: return
-        binding.btnInviteFamily.isEnabled = false
-        lifecycleScope.launch {
-            try {
-                AuthGate.ensureSignedIn()
-                val code = repo.getOrCreateInviteCode(familyId)
-                AlertDialog.Builder(this@ParentHomeActivity)
-                    .setTitle(R.string.invite_dialog_title)
-                    .setMessage(getString(R.string.invite_dialog_message, code.chunked(3).joinToString(" ")))
-                    .setPositiveButton(R.string.button_confirm, null)
-                    .show()
-            } catch (e: Exception) {
-                android.widget.Toast.makeText(this@ParentHomeActivity, e.message ?: getString(R.string.error_generic), android.widget.Toast.LENGTH_LONG).show()
-            } finally {
-                binding.btnInviteFamily.isEnabled = true
-            }
-        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.invite_dialog_title)
+            .setMessage(getString(R.string.invite_dialog_message, familyId.chunked(3).joinToString(" ")))
+            .setPositiveButton(R.string.button_confirm, null)
+            .show()
     }
 
     private fun onCallClicked() {

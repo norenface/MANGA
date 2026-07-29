@@ -27,9 +27,6 @@ class RoleSelectActivity : AppCompatActivity() {
         binding = ActivityRoleSelectBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.tvFirebaseWarning.visibility =
-            if (App.isFirebaseConfigured(this)) android.view.View.GONE else android.view.View.VISIBLE
-
         binding.btnParent.setOnClickListener {
             startActivity(Intent(this, ParentSetupActivity::class.java))
         }

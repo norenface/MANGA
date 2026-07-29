@@ -7,7 +7,6 @@
     <string name="role_select_parent_button">保護者として設定する</string>
     <string name="role_select_join_family_button">招待コードで家族に参加する(離れて暮らすご家族向け)</string>
     <string name="role_select_baby_button">赤ちゃんの端末として設定する</string>
-    <string name="warning_firebase_not_configured">Firebaseが未設定です。README-babycall.md の手順に従って strings_firebase.xml を設定してください。</string>
 
     <!-- Parent setup -->
     <string name="parent_setup_title">保護者の設定</string>
@@ -18,7 +17,7 @@
     <string name="pin_explanation">このPINは赤ちゃん端末で通話を終了したり、設定を解除したりする際に必要です。赤ちゃんには教えないでください。</string>
     <string name="button_create_family">作成する</string>
     <string name="label_transport_mode">接続方式</string>
-    <string name="transport_mode_cloud">クラウド(どこからでも呼びかけ可能)</string>
+    <string name="transport_mode_cloud">インターネット(どこからでも呼びかけ可能・アカウント不要)</string>
     <string name="transport_mode_local">ローカル(自宅Wi-Fi内のみ・アカウント不要)</string>
     <string name="error_pairing_wrong_code_attempt">番号が違う端末から接続がありました。番号を再確認してください。</string>
     <string name="status_searching_parent">保護者の端末を探しています…</string>
@@ -30,9 +29,9 @@
 
     <!-- Baby setup -->
     <string name="baby_setup_title">赤ちゃん端末の設定</string>
-    <string name="baby_setup_subtitle">保護者の端末に表示された6桁の番号を入力してください。この端末は、この番号で接続した保護者からの通話にしか応答できなくなります。</string>
+    <string name="baby_setup_subtitle">保護者の端末に表示された番号を入力してください。この端末は、この番号で接続した保護者からの通話にしか応答できなくなります。</string>
     <string name="hint_baby_name">呼び名(例:ゆうくん)</string>
-    <string name="hint_pairing_code">6桁の番号</string>
+    <string name="hint_pairing_code">ペアリング番号</string>
     <string name="warning_permissions_required">通話にはカメラとマイクの権限が必要です。設定から許可してください。</string>
     <string name="button_connect">つなぐ</string>
 
@@ -40,7 +39,7 @@
     <string name="join_family_title">家族に参加する</string>
     <string name="join_family_subtitle">すでに設定済みの保護者アプリで発行された招待コードを入力してください。離れた場所からでも赤ちゃん端末に呼びかけられるようになります。</string>
     <string name="hint_your_name">お名前(例:おじいちゃん)</string>
-    <string name="hint_invite_code">招待コード(6桁)</string>
+    <string name="hint_invite_code">招待コード</string>
     <string name="button_join">参加する</string>
     <string name="button_invite_family">家族を招待する</string>
     <string name="invite_dialog_title">この番号を招待したい方にお伝えください</string>
@@ -50,8 +49,10 @@
     <string name="error_pin_format">PINは4〜6桁の数字で入力してください。</string>
     <string name="error_pin_mismatch">PINが一致しません。</string>
     <string name="error_pin_incorrect">PINが違います。</string>
-    <string name="error_code_format">6桁の番号を入力してください。</string>
+    <string name="error_code_format">正しい番号を入力してください。</string>
     <string name="error_generic">エラーが発生しました。もう一度お試しください。</string>
+    <string name="error_pairing_timeout">応答がありませんでした。保護者側の画面が開いているか、番号が正しいか確認してください。</string>
+    <string name="error_join_family_unreachable">赤ちゃん端末に接続できませんでした。赤ちゃん端末の電源が入っていて、インターネットに接続されているか確認してください。</string>
 
     <!-- Call screen -->
     <string name="call_connecting">つながるまで、少々お待ちください…</string>

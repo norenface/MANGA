@@ -13,18 +13,18 @@ data class RemoteCallInfo(
 /**
  * Transport-agnostic signaling channel for ONE participant's session in a
  * call. Implementations:
- *  - [com.babycall.webrtc.SignalingRepository] (Firebase Realtime Database,
- *    scoped to one session under /families/{familyId}/call/sessions/{id};
- *    works from anywhere with internet)
+ *  - [com.babycall.peer.PeerViewerConnection] / [com.babycall.peer.PeerHub]
+ *    (peer-broker "online" mode; works from anywhere with internet, no
+ *    account or server of our own needed)
  *  - the `local.*` classes (raw socket over the home Wi-Fi/LAN, no internet
  *    or account needed, single session only, same-network only)
  *
  * A viewer (parent/relative) always owns exactly one CallSignaling for the
- * duration of a call. In cloud mode, the baby device owns one per connected
- * viewer simultaneously (see [SignalingRoomRepository]), so several people
- * can be in the same call independently of each other; in local mode the
- * baby is limited to a single CallSignaling (see LocalCallServer). Call
- * [release] exactly once when done with an instance.
+ * duration of a call. In online mode, the baby device owns one per
+ * connected viewer simultaneously (see [com.babycall.peer.PeerHub]), so
+ * several people can be in the same call independently of each other; in
+ * local mode the baby is limited to a single CallSignaling (see
+ * LocalCallServer). Call [release] exactly once when done with an instance.
  */
 interface CallSignaling {
     fun observeCallInfo(onChange: (RemoteCallInfo) -> Unit)

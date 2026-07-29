@@ -4,22 +4,18 @@ import android.os.Bundle
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.babycall.AuthGate
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.databinding.ActivitySettingsBinding
 import com.babycall.local.LocalControlChannel
-import com.babycall.pairing.PairingRepository
-import com.google.firebase.database.ValueEventListener
+import com.babycall.peer.PeerControlClient
 import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var prefs: Prefs
-    private val repo = PairingRepository()
     private lateinit var familyId: String
-    private var settingsListener: ValueEventListener? = null
     private var babyDeviceId: String? = null
     private var suppressAutoAnswerCallback = false
 
@@ -38,37 +34,22 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnSavePin.setOnClickListener { onSavePinClicked() }
         binding.btnUnpairBaby.setOnClickListener { confirmUnpairBaby() }
 
-        if (prefs.isLocalMode) {
-            suppressAutoAnswerCallback = true
-            binding.switchAutoAnswer.isChecked = prefs.autoAnswer
-            suppressAutoAnswerCallback = false
-            babyDeviceId = prefs.peerDeviceId
-            binding.btnUnpairBaby.isEnabled = babyDeviceId != null
-        } else {
-            lifecycleScope.launch {
-                AuthGate.ensureSignedIn()
-
-                settingsListener = repo.observeSettings(familyId) { settings ->
-                    suppressAutoAnswerCallback = true
-                    binding.switchAutoAnswer.isChecked = settings.autoAnswer
-                    suppressAutoAnswerCallback = false
-                }
-
-                babyDeviceId = repo.findBabyDeviceId(familyId)
-                binding.btnUnpairBaby.isEnabled = babyDeviceId != null
-            }
-        }
+        suppressAutoAnswerCallback = true
+        binding.switchAutoAnswer.isChecked = prefs.autoAnswer
+        suppressAutoAnswerCallback = false
+        babyDeviceId = prefs.peerDeviceId
+        binding.btnUnpairBaby.isEnabled = babyDeviceId != null
     }
 
     private fun onAutoAnswerChanged(isChecked: Boolean) {
-        if (prefs.isLocalMode) {
-            prefs.autoAnswer = isChecked
-            lifecycleScope.launch {
-                val ok = LocalControlChannel.pushSettings(this@SettingsActivity, prefs, pinHash = null, autoAnswer = isChecked)
-                if (!ok) showTransientError(getString(R.string.error_local_baby_unreachable))
+        prefs.autoAnswer = isChecked
+        lifecycleScope.launch {
+            val ok = if (prefs.isLocalMode) {
+                LocalControlChannel.pushSettings(this@SettingsActivity, prefs, pinHash = null, autoAnswer = isChecked)
+            } else {
+                PeerControlClient.setAutoAnswer(familyId, isChecked)
             }
-        } else {
-            lifecycleScope.launch { runCatching { repo.setAutoAnswer(familyId, isChecked) } }
+            if (!ok) showTransientError(getString(R.string.error_local_baby_unreachable))
         }
     }
 
@@ -88,14 +69,14 @@ class SettingsActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val hash = Prefs.hashPin(pin)
-            if (prefs.isLocalMode) {
-                val ok = LocalControlChannel.pushSettings(this@SettingsActivity, prefs, pinHash = hash, autoAnswer = prefs.autoAnswer)
-                if (!ok) {
-                    showTransientError(getString(R.string.error_local_baby_unreachable))
-                    return@launch
-                }
+            val ok = if (prefs.isLocalMode) {
+                LocalControlChannel.pushSettings(this@SettingsActivity, prefs, pinHash = hash, autoAnswer = prefs.autoAnswer)
             } else {
-                runCatching { repo.setPin(familyId, hash) }
+                PeerControlClient.setPin(familyId, hash)
+            }
+            if (!ok) {
+                showTransientError(getString(R.string.error_local_baby_unreachable))
+                return@launch
             }
             prefs.pinHash = hash
             binding.etNewPin.text?.clear()
@@ -114,33 +95,23 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun doUnpairBaby() {
-        if (prefs.isLocalMode) {
-            lifecycleScope.launch {
-                val notified = LocalControlChannel.pushUnpair(this@SettingsActivity, prefs)
-                if (!notified) {
-                    showTransientError(getString(R.string.error_local_unpair_not_delivered))
-                }
-                prefs.peerDeviceId = null
-                babyDeviceId = null
-                binding.btnUnpairBaby.isEnabled = false
+        lifecycleScope.launch {
+            val notified = if (prefs.isLocalMode) {
+                LocalControlChannel.pushUnpair(this@SettingsActivity, prefs)
+            } else {
+                PeerControlClient.unpairBaby(familyId)
             }
-        } else {
-            val deviceId = babyDeviceId ?: return
-            lifecycleScope.launch {
-                runCatching { repo.unpairDevice(familyId, deviceId) }
-                babyDeviceId = null
-                binding.btnUnpairBaby.isEnabled = false
+            if (!notified) {
+                showTransientError(getString(R.string.error_local_unpair_not_delivered))
             }
+            prefs.peerDeviceId = null
+            babyDeviceId = null
+            binding.btnUnpairBaby.isEnabled = false
         }
     }
 
     private fun showTransientError(message: String) {
         binding.tvSettingsError.text = message
         binding.tvSettingsError.visibility = android.view.View.VISIBLE
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        settingsListener?.let { repo.removeSettingsListener(familyId, it) }
     }
 }

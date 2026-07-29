@@ -7,35 +7,36 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.babycall.AuthGate
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.databinding.ActivityCallBinding
 import com.babycall.model.CallState
+import com.babycall.peer.PeerHubHolder
+import com.babycall.peer.PeerMeshLink
+import com.babycall.peer.PeerSessionSubscription
+import com.babycall.peer.PeerViewerConnection
 import com.babycall.security.PinDialog
 import com.babycall.signaling.CallSignaling
 import com.babycall.signaling.SignalingFactory
-import com.babycall.webrtc.MeshLinkRepository
-import com.babycall.webrtc.SignalingRepository
-import com.babycall.webrtc.SignalingRoomRepository
 import com.babycall.webrtc.WebRTCClient
 import kotlinx.coroutines.launch
 import org.webrtc.SurfaceViewRenderer
 
 /**
- * Shared call screen for both roles, working over either transport (cloud
- * Firebase or local Wi-Fi socket — see [SignalingFactory]).
+ * Shared call screen for both roles, working over either transport (the
+ * peer-broker "online" mode or the local Wi-Fi socket — see
+ * [SignalingFactory] for local mode, [PeerViewerConnection]/[PeerHubHolder]
+ * for online mode).
  *
- * Cloud mode is a full group call: the baby device keeps one independent
- * WebRTC connection per connected viewer (see [SignalingRoomRepository]),
- * AND every viewer connects directly to every other viewer too (see
- * [MeshLinkRepository]) so relatives can see and hear each other, not just
- * the baby. Every participant's screen shows one video tile per other
- * participant it's connected to, arranged in a simple grid that grows and
- * shrinks as people join or leave. One participant leaving only tears down
- * their own connections; everyone else stays connected. Local mode is
- * unaffected — a single baby, a single viewer, unchanged from the original
- * design.
+ * Online mode is a full group call: the baby device keeps one independent
+ * WebRTC connection per connected viewer (see [PeerHubHolder]), AND every
+ * viewer connects directly to every other viewer too (see [PeerMeshLink])
+ * so relatives can see and hear each other, not just the baby. Every
+ * participant's screen shows one video tile per other participant it's
+ * connected to, arranged in a simple grid that grows and shrinks as people
+ * join or leave. One participant leaving only tears down their own
+ * connections; everyone else stays connected. Local mode is unaffected — a
+ * single baby, a single viewer, unchanged from the original design.
  *
  * Baby role (either mode): no end-call button is shown at all. Ending a
  * call requires holding a small, unlabeled dot in the corner for 3
@@ -56,11 +57,11 @@ class CallActivity : AppCompatActivity() {
     private lateinit var myDeviceId: String
     private lateinit var webRTCClient: WebRTCClient
 
-    /** peerId -> that peer's baby<->viewer signaling. One entry for a viewer or a local-mode baby; one per connected viewer for a cloud-mode baby. */
+    /** peerId -> that peer's baby<->viewer signaling. One entry for a viewer or a local-mode baby; one per connected viewer for an online-mode baby. */
     private val sessions = mutableMapOf<String, CallSignaling>()
 
-    /** otherViewerId -> direct viewer-to-viewer signaling (cloud-mode viewers only). */
-    private val meshLinks = mutableMapOf<String, MeshLinkRepository>()
+    /** otherViewerId -> direct viewer-to-viewer signaling (online-mode viewers only). */
+    private val meshLinks = mutableMapOf<String, PeerMeshLink>()
 
     private val remoteTiles = mutableMapOf<String, SurfaceViewRenderer>()
 
@@ -68,7 +69,11 @@ class CallActivity : AppCompatActivity() {
     private var offerPendingManualAnswer = false
     private var pendingManualAnswerPeerId: String? = null
 
-    private var roomRepo: SignalingRoomRepository? = null
+    /** Online-mode viewer only: the one broker connection used for both the call-to-baby leg and all mesh legs. */
+    private var viewerConnection: PeerViewerConnection? = null
+
+    /** Online-mode baby only: this CallActivity's subscription to the persistent [PeerHubHolder] instance. */
+    private var hubSubscription: PeerSessionSubscription? = null
 
     private var holdRunnable: Runnable? = null
     private val holdHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -113,8 +118,6 @@ class CallActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            if (!prefs.isLocalMode) runCatching { AuthGate.ensureSignedIn() }
-
             if (role == "parent") {
                 val calleeId = intent.getStringExtra(EXTRA_CALLEE_ID)
                 if (calleeId != null) {
@@ -135,7 +138,11 @@ class CallActivity : AppCompatActivity() {
     // ---- Viewer (parent / invited relative) — link to the baby, either mode ----
 
     private fun wireOutgoing(calleeId: String) {
-        val signaling = SignalingFactory.create(this, prefs)
+        val signaling: CallSignaling = if (prefs.isLocalMode) {
+            SignalingFactory.create(this, prefs)
+        } else {
+            PeerViewerConnection(familyId, myDeviceId).also { viewerConnection = it }
+        }
         sessions[calleeId] = signaling
 
         val tile = addRemoteTile(calleeId)
@@ -165,24 +172,20 @@ class CallActivity : AppCompatActivity() {
         }
     }
 
-    // ---- Viewer-to-viewer mesh (cloud mode only): see and hear every other viewer directly ----
+    // ---- Viewer-to-viewer mesh (online mode only): see and hear every other viewer directly ----
 
     private fun startViewerMeshDiscovery() {
-        val repo = SignalingRoomRepository(familyId)
-        roomRepo = repo
-        repo.observeSessions(
-            onNewSession = { sessionId, _ ->
-                if (sessionId != myDeviceId) runOnUiThread { handleNewMeshPeer(sessionId) }
-            },
-            onSessionEnded = { sessionId ->
-                if (sessionId != myDeviceId) runOnUiThread { endSession(sessionId) }
-            }
+        val vc = viewerConnection ?: return
+        vc.observeRoster(
+            onAdd = { peerId -> runOnUiThread { handleNewMeshPeer(peerId) } },
+            onRemove = { peerId -> runOnUiThread { endSession(peerId) } }
         )
     }
 
     private fun handleNewMeshPeer(otherViewerId: String) {
         if (meshLinks.containsKey(otherViewerId)) return
-        val mesh = MeshLinkRepository(familyId, MeshLinkRepository.keyFor(myDeviceId, otherViewerId))
+        val vc = viewerConnection ?: return
+        val mesh = PeerMeshLink(vc, otherViewerId)
         meshLinks[otherViewerId] = mesh
 
         val tile = addRemoteTile(otherViewerId)
@@ -232,20 +235,18 @@ class CallActivity : AppCompatActivity() {
         }
     }
 
-    // ---- Baby, cloud mode — one independent connection per connected viewer ----
+    // ---- Baby, online mode — one independent connection per connected viewer ----
 
     private fun startBabyRoom() {
-        val repo = SignalingRoomRepository(familyId)
-        roomRepo = repo
-        repo.observeSessions(
-            onNewSession = { sessionId, _ -> runOnUiThread { handleNewViewerSession(sessionId) } },
+        val hub = PeerHubHolder.getOrCreate(prefs)
+        hubSubscription = hub.observeSessions(
+            onNewSession = { sessionId, signaling -> runOnUiThread { handleNewViewerSession(sessionId, signaling) } },
             onSessionEnded = { sessionId -> runOnUiThread { endSession(sessionId) } }
         )
     }
 
-    private fun handleNewViewerSession(sessionId: String) {
+    private fun handleNewViewerSession(sessionId: String, signaling: CallSignaling) {
         if (sessions.containsKey(sessionId)) return
-        val signaling = SignalingRepository(familyId, sessionId)
         sessions[sessionId] = signaling
 
         val tile = addRemoteTile(sessionId)
@@ -446,7 +447,7 @@ class CallActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        roomRepo?.release()
+        hubSubscription?.let { PeerHubHolder.getOrCreate(prefs).removeSubscriber(it) }
         sessions.values.forEach { it.release() }
         sessions.clear()
         meshLinks.values.forEach { it.release() }

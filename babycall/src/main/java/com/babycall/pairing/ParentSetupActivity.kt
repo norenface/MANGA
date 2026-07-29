@@ -7,21 +7,20 @@ import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import com.babycall.AuthGate
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.databinding.ActivityParentSetupBinding
 import com.babycall.home.ParentHomeActivity
 import com.babycall.local.LocalPairingHost
-import kotlinx.coroutines.launch
+import com.babycall.peer.PeerPairingHost
+import com.babycall.peer.PeerProtocol
 
 class ParentSetupActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityParentSetupBinding
     private lateinit var prefs: Prefs
-    private val repo = PairingRepository()
     private var localHost: LocalPairingHost? = null
+    private var onlineHost: PeerPairingHost? = null
     private var paired = false
 
     private val permissionLauncher = registerForActivityResult(
@@ -70,7 +69,7 @@ class ParentSetupActivity : AppCompatActivity() {
         if (isLocal) {
             createFamilyLocal(name, pin)
         } else {
-            createFamilyCloud(name, pin)
+            createFamilyOnline(name, pin)
         }
     }
 
@@ -106,28 +105,40 @@ class ParentSetupActivity : AppCompatActivity() {
         showCodeStep(host.code, connected = false)
     }
 
-    private fun createFamilyCloud(name: String, pin: String) {
+    private fun createFamilyOnline(name: String, pin: String) {
+        prefs.role = "parent"
         prefs.transportMode = Prefs.TRANSPORT_CLOUD
-        lifecycleScope.launch {
-            try {
-                AuthGate.ensureSignedIn()
-                val deviceId = prefs.deviceId
-                val newFamilyId = repo.createFamily(deviceId, name)
-                repo.setPin(newFamilyId, Prefs.hashPin(pin))
+        prefs.deviceName = name
+        prefs.pinHash = Prefs.hashPin(pin)
+        prefs.autoAnswer = true
 
-                prefs.role = "parent"
-                prefs.familyId = newFamilyId
-                prefs.deviceName = name
-                prefs.pinHash = Prefs.hashPin(pin)
+        val code = PeerProtocol.randomFamilyCode()
+        prefs.familyId = code
 
-                val code = repo.generatePairingCode(newFamilyId)
-                paired = true
-                showCodeStep(code, connected = true)
-            } catch (e: Exception) {
-                showError(e.message ?: getString(R.string.error_generic))
-                binding.btnCreateFamily.isEnabled = true
+        val host = PeerPairingHost()
+        onlineHost = host
+        host.start(
+            familyCode = code,
+            parentName = name,
+            pinHash = Prefs.hashPin(pin),
+            autoAnswer = true,
+            parentDeviceId = prefs.deviceId,
+            onPaired = { _, babyDeviceId ->
+                runOnUiThread {
+                    paired = true
+                    prefs.peerDeviceId = babyDeviceId
+                    showCodeStep(code, connected = true)
+                }
+            },
+            onError = { message ->
+                runOnUiThread {
+                    showError(message)
+                    binding.btnCreateFamily.isEnabled = true
+                }
             }
-        }
+        )
+
+        showCodeStep(code, connected = false)
     }
 
     private fun showError(message: String) {
@@ -149,6 +160,9 @@ class ParentSetupActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (!paired) localHost?.stop()
+        if (!paired) {
+            localHost?.stop()
+            onlineHost?.stop()
+        }
     }
 }

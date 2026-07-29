@@ -13,7 +13,7 @@ import kotlin.concurrent.thread
 /**
  * Parent-side local pairing: shows a 6-digit code and waits for the baby
  * device to find it on the LAN (via mDNS) and redeem that code. Everything
- * here is generated on-device — no internet, no Firebase project needed.
+ * here is generated on-device — no internet, no account needed.
  */
 class LocalPairingHost(private val context: Context) {
 

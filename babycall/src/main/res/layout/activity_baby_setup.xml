@@ -74,8 +74,8 @@
                 android:id="@+id/etCode"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="number"
-                android:maxLength="6"
+                android:inputType="textCapCharacters"
+                android:maxLength="16"
                 android:textSize="24sp"
                 android:letterSpacing="0.2" />
         </com.google.android.material.textfield.TextInputLayout>

@@ -9,31 +9,24 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
-import androidx.lifecycle.lifecycleScope
-import com.babycall.AuthGate
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.RoleSelectActivity
 import com.babycall.local.LocalCallServerHolder
-import com.babycall.pairing.PairingRepository
-import com.babycall.webrtc.SignalingRoomRepository
-import com.google.firebase.database.ValueEventListener
-import kotlinx.coroutines.launch
+import com.babycall.peer.PeerHubHolder
+import com.babycall.peer.PeerSessionSubscription
 
 /**
  * Runs continuously on the baby's device so an incoming call can be picked
  * up (auto-answered) even if the app was swiped away or the device just
  * rebooted. This is the only thing on the baby device that "listens" for
- * anything, and it only ever reacts to the single paired family (cloud
- * mode: the Firebase call node; local mode: the socket server in
- * [LocalCallServerHolder]).
+ * anything, and it only ever reacts to the single paired family (online
+ * mode: the peer broker via [PeerHubHolder]; local mode: the socket server
+ * in [LocalCallServerHolder]).
  */
 class CallListenerService : LifecycleService() {
 
-    private var roomRepo: SignalingRoomRepository? = null
-    private val pairingRepo = PairingRepository()
-    private var settingsListener: ValueEventListener? = null
-    private var familyIdForSettings: String? = null
+    private var hubSubscription: PeerSessionSubscription? = null
     private var callActivityLaunched = false
     private var ringingCount = 0
 
@@ -51,7 +44,7 @@ class CallListenerService : LifecycleService() {
         if (prefs.isLocalMode) {
             startLocalListening(prefs, familyId)
         } else {
-            startCloudListening(prefs, familyId)
+            startOnlineListening(prefs)
         }
     }
 
@@ -78,40 +71,38 @@ class CallListenerService : LifecycleService() {
         server.start()
     }
 
-    private fun startCloudListening(prefs: Prefs, familyId: String) {
-        familyIdForSettings = familyId
-
-        lifecycleScope.launch {
-            runCatching { AuthGate.ensureSignedIn() }
-
-            // Only decides whether to launch CallActivity for the first
-            // viewer of a new call; once it's open, CallActivity has its own
-            // SignalingRoomRepository that picks up every viewer (including
-            // ones who join later, mid-call) on its own.
-            val repo = SignalingRoomRepository(familyId)
-            roomRepo = repo
-            repo.observeSessions(
-                onNewSession = { _, callerId ->
-                    ringingCount++
-                    if (!callActivityLaunched) {
-                        callActivityLaunched = true
-                        launchCallActivity(callerId)
-                    }
-                },
-                onSessionEnded = {
-                    ringingCount = (ringingCount - 1).coerceAtLeast(0)
-                    if (ringingCount == 0) callActivityLaunched = false
-                }
-            )
-
-            // Keep the baby device's local copy of the PIN/auto-answer current
-            // so CallActivity/BabyHomeActivity never need their own Firebase
-            // round-trip to check them.
-            settingsListener = pairingRepo.observeSettings(familyId) { settings ->
-                prefs.pinHash = settings.pinHash
-                prefs.autoAnswer = settings.autoAnswer
+    private fun startOnlineListening(prefs: Prefs) {
+        val hub = PeerHubHolder.getOrCreate(prefs)
+        hub.onUnpaired = {
+            prefs.clearPairing()
+            PeerHubHolder.stop()
+            val intent = Intent(this, RoleSelectActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             }
+            startActivity(intent)
+            stopSelf()
         }
+        hub.start()
+
+        // Only decides whether to launch CallActivity for the first viewer
+        // of a new call; once it's open, CallActivity has its own
+        // subscription that picks up every viewer (including ones who join
+        // later, mid-call) on its own. Settings pushed by a parent-role
+        // device are applied directly to prefs inside PeerHub itself, so
+        // there is nothing to separately observe here.
+        hubSubscription = hub.observeSessions(
+            onNewSession = { _, _ ->
+                ringingCount++
+                if (!callActivityLaunched) {
+                    callActivityLaunched = true
+                    launchCallActivity("")
+                }
+            },
+            onSessionEnded = { _ ->
+                ringingCount = (ringingCount - 1).coerceAtLeast(0)
+                if (ringingCount == 0) callActivityLaunched = false
+            }
+        )
     }
 
     private fun launchCallActivity(callerId: String) {
@@ -144,8 +135,9 @@ class CallListenerService : LifecycleService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        roomRepo?.release()
-        familyIdForSettings?.let { fid -> settingsListener?.let { pairingRepo.removeSettingsListener(fid, it) } }
+        hubSubscription?.let { sub ->
+            runCatching { PeerHubHolder.getOrCreate(Prefs(this)).removeSubscriber(sub) }
+        }
     }
 
     override fun onBind(intent: Intent): IBinder? {

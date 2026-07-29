@@ -7,8 +7,8 @@ import java.util.UUID
 
 /**
  * Local device state. Nothing here is shared between devices except what we
- * explicitly write to Firebase (familyId + deviceId + role), so a baby device
- * has no way to discover or dial any other family's data.
+ * explicitly hand over at pairing time (familyId + deviceId + role), so a
+ * baby device has no way to discover or dial any other family's data.
  */
 class Prefs(context: Context) {
 
@@ -46,7 +46,7 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_AUTO_ANSWER, true)
         set(value) = sp.edit().putBoolean(KEY_AUTO_ANSWER, value).apply()
 
-    /** "cloud" (Firebase, works anywhere) or "local" (same Wi-Fi only, no account/server needed). */
+    /** "cloud" (peer-broker "online" mode, works anywhere) or "local" (same Wi-Fi only, no account/server needed). */
     var transportMode: String
         get() = sp.getString(KEY_TRANSPORT_MODE, TRANSPORT_CLOUD) ?: TRANSPORT_CLOUD
         set(value) = sp.edit().putString(KEY_TRANSPORT_MODE, value).apply()

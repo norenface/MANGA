@@ -53,13 +53,10 @@ dependencies {
 
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3'
 
-    // Firebase Realtime Database (signaling + pairing). Initialized manually via
-    // FirebaseOptions in App.kt, no google-services.json / gradle plugin required.
-    implementation platform('com.google.firebase:firebase-bom:32.7.4')
-    implementation 'com.google.firebase:firebase-database-ktx'
-    implementation 'com.google.firebase:firebase-auth-ktx'
+    // WebSocket client used for the peer-broker ("online" mode) signaling
+    // transport -- see peer/PeerBrokerClient.kt.
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 
     // WebRTC (maintained Maven Central mirror of Google's org.webrtc)
     implementation 'io.github.webrtc-sdk:android:125.6422.07'

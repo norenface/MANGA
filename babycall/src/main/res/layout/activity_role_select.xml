@@ -53,15 +53,5 @@
             android:text="@string/role_select_baby_button"
             android:textSize="16sp" />
 
-        <TextView
-            android:id="@+id/tvFirebaseWarning"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:visibility="gone"
-            android:text="@string/warning_firebase_not_configured"
-            android:textColor="@color/danger_red"
-            android:textSize="12sp" />
-
     </LinearLayout>
 </ScrollView>
