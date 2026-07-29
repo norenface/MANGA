@@ -22,6 +22,7 @@
     <string name="error_pairing_wrong_code_attempt">番号が違う端末から接続がありました。番号を再確認してください。</string>
     <string name="button_go_home">ホームへ</string>
     <string name="baby_code_title">この番号をご家族に伝えてください</string>
+    <string name="baby_code_instructions">この番号を、通話したいご家族に伝えてください。</string>
     <string name="baby_code_instructions_waiting">同じWi-Fi内で、この番号を伝えたい方に「通話に参加する」から入力してもらってください。入力が完了するまでこの画面を閉じないでください。</string>
     <string name="baby_code_instructions_ready">この番号はずっと使えます。通話したいご家族に伝えてください。相手はBabyCallアプリで「通話に参加する」を選び、この番号を入力するだけで、いつでも赤ちゃんに呼びかけられるようになります。</string>
 
