@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.WindowManager
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.babycall.Prefs
 import com.babycall.R
@@ -47,10 +48,7 @@ class BabyHomeActivity : AppCompatActivity() {
         }
 
         CallListenerService.start(this)
-        try {
-            startLockTask()
-        } catch (_: Exception) {
-        }
+        showExitHintThenLock()
 
         binding.hiddenExitDot.setOnTouchListener { _, event ->
             when (event.action) {
@@ -67,6 +65,26 @@ class BabyHomeActivity : AppCompatActivity() {
                 else -> false
             }
         }
+    }
+
+    /**
+     * The exit gesture is invisible on purpose (see [R.layout.activity_baby_home]'s
+     * hiddenExitDot) so a baby can't find it by chance -- but that means the
+     * caregiver doing setup needs to be told where it is and how it works,
+     * every time this screen starts, since it's the only way back out.
+     */
+    private fun showExitHintThenLock() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.baby_home_exit_hint_title)
+            .setMessage(R.string.baby_home_exit_hint_message)
+            .setCancelable(false)
+            .setPositiveButton(R.string.button_confirm) { _, _ ->
+                try {
+                    startLockTask()
+                } catch (_: Exception) {
+                }
+            }
+            .show()
     }
 
     private fun showExitPin() {

@@ -60,6 +60,8 @@
     <!-- Baby home -->
     <string name="baby_home_waiting_emoji">🧸</string>
     <string name="baby_home_waiting_message">呼ばれるのを待っているよ</string>
+    <string name="baby_home_exit_hint_title">画面固定について</string>
+    <string name="baby_home_exit_hint_message">この画面は固定され、赤ちゃんが誤って他の操作をできないようになります。設定を解除して通常のホーム画面に戻りたいときは、画面の左下すみを3秒間長押しして、設定したPINを入力してください。</string>
     <string name="pin_dialog_unpair_title">この端末の設定を解除しますか?</string>
 
     <!-- Parent home -->
