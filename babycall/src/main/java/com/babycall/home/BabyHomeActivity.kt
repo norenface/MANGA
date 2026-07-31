@@ -1,11 +1,14 @@
 package com.babycall.home
 
 import android.content.Intent
+import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.doOnLayout
 import com.babycall.Prefs
 import com.babycall.R
 import com.babycall.RoleSelectActivity
@@ -63,6 +66,16 @@ class BabyHomeActivity : AppCompatActivity() {
                     true
                 }
                 else -> false
+            }
+        }
+
+        // On gesture-navigation devices, a touch this close to the screen
+        // edge can otherwise be swallowed by the system's own edge-swipe
+        // gesture detection before it ever reaches this view. Carving out
+        // its exact bounds tells the system to leave touches here alone.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            binding.hiddenExitDot.doOnLayout { view ->
+                view.systemGestureExclusionRects = listOf(Rect(0, 0, view.width, view.height))
             }
         }
     }

@@ -6,6 +6,7 @@
     android:background="@color/bg_primary">
 
     <TextView
+        android:id="@+id/tvBabyEmoji"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/baby_home_waiting_emoji"
@@ -25,19 +26,25 @@
         android:textColor="@color/text_primary"
         android:textSize="20sp"
         android:textStyle="bold"
-        app:layout_constraintTop_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvBabyEmoji"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Hidden caregiver-only exit: hold for 3 seconds, then enter the family PIN. -->
+    <!--
+        Hidden caregiver-only exit: hold for 3 seconds, then enter the family
+        PIN. Sized generously and kept clear of the very edge/corner (24dp
+        margin) so it doesn't compete with the system's own edge-swipe
+        gesture-navigation zone, which can otherwise swallow touches placed
+        right at the screen edge before this view ever sees them.
+    -->
     <View
         android:id="@+id/hiddenExitDot"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
         android:background="#11000000"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        android:layout_margin="8dp" />
+        android:layout_margin="24dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
