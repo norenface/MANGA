@@ -19,6 +19,7 @@ import com.babycall.databinding.ItemBabyAppIconBinding
 import com.babycall.launcher.AppPickerActivity
 import com.babycall.local.LocalCallServerHolder
 import com.babycall.peer.PeerHubHolder
+import com.babycall.screenshare.ScreenShareSetupActivity
 import com.babycall.security.PinDialog
 
 /**
@@ -138,6 +139,7 @@ class BabyHomeActivity : AppCompatActivity() {
     private fun showCaregiverMenu() {
         val options = arrayOf(
             getString(R.string.caregiver_menu_manage_apps),
+            getString(R.string.caregiver_menu_screen_share),
             getString(R.string.caregiver_menu_unpair)
         )
         AlertDialog.Builder(this)
@@ -145,7 +147,8 @@ class BabyHomeActivity : AppCompatActivity() {
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> openAppPicker()
-                    1 -> confirmUnpair()
+                    1 -> openScreenShareSetup()
+                    2 -> confirmUnpair()
                 }
             }
             .setNegativeButton(R.string.button_cancel, null)
@@ -158,6 +161,14 @@ class BabyHomeActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         startActivity(Intent(this, AppPickerActivity::class.java))
+    }
+
+    private fun openScreenShareSetup() {
+        try {
+            stopLockTask()
+        } catch (_: Exception) {
+        }
+        startActivity(Intent(this, ScreenShareSetupActivity::class.java))
     }
 
     private fun confirmUnpair() {

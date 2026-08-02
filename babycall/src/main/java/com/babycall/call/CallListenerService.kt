@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -14,25 +15,26 @@ import com.babycall.R
 import com.babycall.RoleSelectActivity
 import com.babycall.local.LocalCallServerHolder
 import com.babycall.peer.PeerHubHolder
-import com.babycall.peer.PeerSessionSubscription
 
 /**
- * Runs continuously on the baby's device so an incoming call can be picked
- * up (auto-answered) even if the app was swiped away or the device just
- * rebooted. This is the only thing on the baby device that "listens" for
- * anything, and it only ever reacts to the single paired family (online
- * mode: the peer broker via [PeerHubHolder]; local mode: the socket server
- * in [LocalCallServerHolder]).
+ * Runs continuously on the baby's device so a call can be picked up (and,
+ * if granted, the screen shared) even if the app was swiped away or the
+ * device just rebooted. This is the only thing on the baby device that
+ * "listens" for anything, and it only ever reacts to the single paired
+ * family (online mode: the peer broker via [PeerHubHolder]; local mode: the
+ * socket server in [LocalCallServerHolder]). All of the actual call
+ * handling -- WebRTC connections, the floating video bubble, screen share
+ * -- lives in [BabyCallManager], owned here for this service's whole
+ * lifetime so it survives regardless of which Activity (if any) is in the
+ * foreground.
  */
 class CallListenerService : LifecycleService() {
 
-    private var hubSubscription: PeerSessionSubscription? = null
-    private var callActivityLaunched = false
-    private var ringingCount = 0
+    private var callManager: BabyCallManager? = null
 
     override fun onCreate() {
         super.onCreate()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForegroundWithType()
 
         val prefs = Prefs(this)
         val familyId = prefs.familyId
@@ -41,24 +43,37 @@ class CallListenerService : LifecycleService() {
             return
         }
 
+        val manager = BabyCallManager(this, prefs)
+        callManager = manager
+
         if (prefs.isLocalMode) {
-            startLocalListening(prefs, familyId)
+            startLocalListening(prefs, manager)
         } else {
-            startOnlineListening(prefs)
+            startOnlineListening(prefs, manager)
         }
     }
 
-    private fun startLocalListening(prefs: Prefs, familyId: String) {
-        val server = LocalCallServerHolder.getOrCreate(this, prefs)
-        server.onIncomingCall = { callerId ->
-            if (!callActivityLaunched) {
-                callActivityLaunched = true
-                launchCallActivity(callerId)
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        if (intent != null && intent.action == ACTION_GRANT_SCREEN_CAPTURE) {
+            val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
+            }
+            if (resultData != null) {
+                Prefs(this).screenShareRequested = true
+                callManager?.grantScreenCapture(resultData)
             }
         }
-        server.onCallEnded = {
-            callActivityLaunched = false
-        }
+        return START_STICKY
+    }
+
+    private fun startLocalListening(prefs: Prefs, manager: BabyCallManager) {
+        val server = LocalCallServerHolder.getOrCreate(this, prefs)
+        server.onIncomingCall = { callerId -> manager.handleLocalIncomingCall(callerId) }
+        server.onCallEnded = { manager.handleLocalCallEnded() }
         server.onUnpaired = {
             prefs.clearPairing()
             LocalCallServerHolder.stop()
@@ -71,7 +86,7 @@ class CallListenerService : LifecycleService() {
         server.start()
     }
 
-    private fun startOnlineListening(prefs: Prefs) {
+    private fun startOnlineListening(prefs: Prefs, manager: BabyCallManager) {
         val hub = PeerHubHolder.getOrCreate(prefs)
         hub.onUnpaired = {
             prefs.clearPairing()
@@ -83,34 +98,20 @@ class CallListenerService : LifecycleService() {
             stopSelf()
         }
         hub.start()
-
-        // Only decides whether to launch CallActivity for the first viewer
-        // of a new call; once it's open, CallActivity has its own
-        // subscription that picks up every viewer (including ones who join
-        // later, mid-call) on its own. Settings pushed by a parent-role
-        // device are applied directly to prefs inside PeerHub itself, so
-        // there is nothing to separately observe here.
-        hubSubscription = hub.observeSessions(
-            onNewSession = { _, _ ->
-                ringingCount++
-                if (!callActivityLaunched) {
-                    callActivityLaunched = true
-                    launchCallActivity("")
-                }
-            },
-            onSessionEnded = { _ ->
-                ringingCount = (ringingCount - 1).coerceAtLeast(0)
-                if (ringingCount == 0) callActivityLaunched = false
-            }
-        )
+        manager.startOnlineListening()
     }
 
-    private fun launchCallActivity(callerId: String) {
-        val intent = Intent(this, CallActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            putExtra(CallActivity.EXTRA_CALLER_ID, callerId)
+    private fun startForegroundWithType() {
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
         }
-        startActivity(intent)
     }
 
     private fun buildNotification(): Notification {
@@ -135,9 +136,8 @@ class CallListenerService : LifecycleService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        hubSubscription?.let { sub ->
-            runCatching { PeerHubHolder.getOrCreate(Prefs(this)).removeSubscriber(sub) }
-        }
+        callManager?.release()
+        callManager = null
     }
 
     override fun onBind(intent: Intent): IBinder? {
@@ -148,9 +148,24 @@ class CallListenerService : LifecycleService() {
     companion object {
         private const val CHANNEL_ID = "babycall_listener"
         private const val NOTIFICATION_ID = 1001
+        private const val ACTION_GRANT_SCREEN_CAPTURE = "com.babycall.action.GRANT_SCREEN_CAPTURE"
+        private const val EXTRA_RESULT_DATA = "extra_result_data"
 
         fun start(context: Context) {
             val intent = Intent(context, CallListenerService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /** Hands a freshly-granted MediaProjection consent token to the running listener service. */
+        fun grantScreenCapture(context: Context, resultData: Intent) {
+            val intent = Intent(context, CallListenerService::class.java).apply {
+                action = ACTION_GRANT_SCREEN_CAPTURE
+                putExtra(EXTRA_RESULT_DATA, resultData)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {

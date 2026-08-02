@@ -5,7 +5,22 @@
     android:layout_height="match_parent"
     android:background="@color/call_bg">
 
-    <!-- Populated programmatically: one tile per connected participant (see CallActivity's video grid helpers). -->
+    <!-- The baby's shared screen (whatever game/app she's playing), full-bleed
+         behind everything else; only shown once that track actually arrives. -->
+    <org.webrtc.SurfaceViewRenderer
+        android:id="@+id/gameScreenRenderer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Populated programmatically: one tile per connected participant (see
+         CallActivity's video grid helpers). Full-bleed by default; shrunk to
+         a top strip at runtime once the baby's shared game screen (above)
+         actually starts showing something, so both stay visible together. -->
     <LinearLayout
         android:id="@+id/remoteVideoGrid"
         android:layout_width="0dp"
@@ -76,39 +91,5 @@
             android:text="@string/button_switch_camera"
             android:textColor="@color/white" />
     </LinearLayout>
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnAnswer"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:backgroundTint="@color/safe_green"
-        android:text="@string/button_answer"
-        android:textSize="18sp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginBottom="48dp" />
-
-    <!--
-        Baby-side "end call" affordance: intentionally has no visible button.
-        A small, unlabeled dot in a corner must be held for several seconds
-        before anything happens, and even then it only opens a PIN prompt.
-    -->
-    <FrameLayout
-        android:id="@+id/groupBabyEndControl"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_margin="8dp">
-
-        <View
-            android:id="@+id/hiddenEndDot"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="#22FFFFFF" />
-    </FrameLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -15,6 +15,7 @@ import com.babycall.home.BabyHomeActivity
 import com.babycall.launcher.AppPickerActivity
 import com.babycall.local.LocalPairingHost
 import com.babycall.peer.PeerProtocol
+import com.babycall.screenshare.ScreenShareSetupActivity
 
 /**
  * Sets up this device as the baby's: generates the family's code itself
@@ -61,6 +62,9 @@ class BabySetupActivity : AppCompatActivity() {
         binding.btnCreateBaby.setOnClickListener { onCreateBabyClicked() }
         binding.btnManageApps.setOnClickListener {
             startActivity(Intent(this@BabySetupActivity, AppPickerActivity::class.java))
+        }
+        binding.btnScreenShareSetup.setOnClickListener {
+            startActivity(Intent(this@BabySetupActivity, ScreenShareSetupActivity::class.java))
         }
         binding.btnDone.setOnClickListener {
             CallListenerService.start(this@BabySetupActivity)

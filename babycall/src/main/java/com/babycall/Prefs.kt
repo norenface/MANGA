@@ -106,6 +106,16 @@ class Prefs(context: Context) {
             sp.edit().putString(KEY_LAUNCHER_APPS, array.toString()).apply()
         }
 
+    /** Baby device only: whether the caregiver has opted into screen +
+     *  camera sharing (see [com.babycall.screenshare.ScreenShareSetupActivity]).
+     *  The actual OS-level MediaProjection grant can't survive a process
+     *  restart, so this flag alone is what lets [com.babycall.call.CallListenerService]
+     *  know to prompt for it again after a reboot instead of just silently
+     *  running without it. */
+    var screenShareRequested: Boolean
+        get() = sp.getBoolean(KEY_SCREEN_SHARE_REQUESTED, false)
+        set(value) = sp.edit().putBoolean(KEY_SCREEN_SHARE_REQUESTED, value).apply()
+
     val isPaired: Boolean
         get() = !familyId.isNullOrEmpty() && !role.isNullOrEmpty()
 
@@ -140,6 +150,7 @@ class Prefs(context: Context) {
         private const val KEY_MY_PUBLIC_HOST = "my_public_host"
         private const val KEY_PEER_PUBLIC_HOST = "peer_public_host"
         private const val KEY_LAUNCHER_APPS = "launcher_apps"
+        private const val KEY_SCREEN_SHARE_REQUESTED = "screen_share_requested"
 
         const val TRANSPORT_CLOUD = "cloud"
         const val TRANSPORT_LOCAL = "local"

@@ -170,6 +170,14 @@
                 android:text="@string/button_manage_apps" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnScreenShareSetup"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:text="@string/button_screen_share_setup" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnDone"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"

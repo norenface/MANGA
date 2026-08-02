@@ -65,6 +65,7 @@
     <string name="pin_dialog_unpair_title">PINを入力してください</string>
     <string name="caregiver_menu_title">何をしますか?</string>
     <string name="caregiver_menu_manage_apps">遊べるアプリを選ぶ</string>
+    <string name="caregiver_menu_screen_share">画面共有を設定する</string>
     <string name="caregiver_menu_unpair">この端末の設定を解除する</string>
 
     <!-- App picker (baby device: choose apps the baby can open) -->
@@ -72,6 +73,17 @@
     <string name="app_picker_subtitle">選んだアプリのアイコンが、赤ちゃんの待機画面に表示されます。タップすると起動します。</string>
     <string name="button_save_apps">保存する</string>
     <string name="button_manage_apps">遊べるアプリを選ぶ</string>
+
+    <!-- Screen share setup (baby device: enable game-screen sharing + video bubble) -->
+    <string name="button_screen_share_setup">オンライン共有を設定する(任意)</string>
+    <string name="screen_share_setup_title">オンライン共有の設定</string>
+    <string name="screen_share_setup_explanation">この設定をすると、ご家族がオンラインで参加したときに、赤ちゃんの様子と遊んでいる画面を見られるようになります。赤ちゃんの画面には小さなビデオ通話が表示されるだけで、操作の邪魔にはなりません。どちらも、この端末で一度だけ手動で許可が必要です(端末を再起動すると、もう一度許可が必要になることがあります)。</string>
+    <string name="screen_share_step1_title">手順1: 他のアプリの上に表示を許可</string>
+    <string name="screen_share_step1_button">許可する</string>
+    <string name="screen_share_step2_title">手順2: 画面の共有を許可</string>
+    <string name="screen_share_step2_button">許可する</string>
+    <string name="screen_share_status_granted">許可済みです</string>
+    <string name="screen_share_status_not_granted">まだ許可されていません</string>
 
     <!-- Parent home -->
     <string name="button_call_baby">呼びかける</string>
