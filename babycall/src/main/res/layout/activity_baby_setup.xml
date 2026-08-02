@@ -162,10 +162,18 @@
                 android:textSize="14sp" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnDone"
+                android:id="@+id/btnManageApps"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:layout_marginTop="32dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:text="@string/button_manage_apps" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDone"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
                 android:text="@string/button_go_home" />
         </LinearLayout>
 

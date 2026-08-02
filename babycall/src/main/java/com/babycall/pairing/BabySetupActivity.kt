@@ -12,6 +12,7 @@ import com.babycall.R
 import com.babycall.call.CallListenerService
 import com.babycall.databinding.ActivityBabySetupBinding
 import com.babycall.home.BabyHomeActivity
+import com.babycall.launcher.AppPickerActivity
 import com.babycall.local.LocalPairingHost
 import com.babycall.peer.PeerProtocol
 
@@ -58,6 +59,9 @@ class BabySetupActivity : AppCompatActivity() {
         if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
 
         binding.btnCreateBaby.setOnClickListener { onCreateBabyClicked() }
+        binding.btnManageApps.setOnClickListener {
+            startActivity(Intent(this@BabySetupActivity, AppPickerActivity::class.java))
+        }
         binding.btnDone.setOnClickListener {
             CallListenerService.start(this@BabySetupActivity)
             startActivity(Intent(this@BabySetupActivity, BabyHomeActivity::class.java))

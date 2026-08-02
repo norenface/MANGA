@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
@@ -14,6 +15,8 @@ import com.babycall.R
 import com.babycall.RoleSelectActivity
 import com.babycall.call.CallListenerService
 import com.babycall.databinding.ActivityBabyHomeBinding
+import com.babycall.databinding.ItemBabyAppIconBinding
+import com.babycall.launcher.AppPickerActivity
 import com.babycall.local.LocalCallServerHolder
 import com.babycall.peer.PeerHubHolder
 import com.babycall.security.PinDialog
@@ -31,6 +34,12 @@ class BabyHomeActivity : AppCompatActivity() {
 
     private var holdRunnable: Runnable? = null
     private val holdHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** True until the one-time exit-hint dialog's own confirm button has
+     *  engaged lock task for the first time; guards [onResume] from
+     *  re-locking (and thus fighting the dialog) before the caregiver has
+     *  even read it. */
+    private var exitHintPending = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,6 +89,22 @@ class BabyHomeActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (!prefs.isPaired || prefs.role != "baby") return
+        refreshAppGrid()
+        // Skipped on the very first resume after onCreate: the exit-hint
+        // dialog hasn't been confirmed yet, and it engages lock task itself.
+        // On every later resume (e.g. returning from a registered app that
+        // dropped lock task to launch), re-engage it here.
+        if (!exitHintPending) {
+            try {
+                startLockTask()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     /**
      * The exit gesture is invisible on purpose (see [R.layout.activity_baby_home]'s
      * hiddenExitDot) so a baby can't find it by chance -- but that means the
@@ -92,6 +117,7 @@ class BabyHomeActivity : AppCompatActivity() {
             .setMessage(R.string.baby_home_exit_hint_message)
             .setCancelable(false)
             .setPositiveButton(R.string.button_confirm) { _, _ ->
+                exitHintPending = false
                 try {
                     startLockTask()
                 } catch (_: Exception) {
@@ -104,9 +130,72 @@ class BabyHomeActivity : AppCompatActivity() {
         val pinHash = prefs.pinHash ?: return
         PinDialog.show(this, titleRes = R.string.pin_dialog_unpair_title) { rawPin ->
             val ok = Prefs.hashPin(rawPin) == pinHash
-            if (ok) doUnpair()
+            if (ok) showCaregiverMenu()
             ok
         }
+    }
+
+    private fun showCaregiverMenu() {
+        val options = arrayOf(
+            getString(R.string.caregiver_menu_manage_apps),
+            getString(R.string.caregiver_menu_unpair)
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.caregiver_menu_title)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> openAppPicker()
+                    1 -> confirmUnpair()
+                }
+            }
+            .setNegativeButton(R.string.button_cancel, null)
+            .show()
+    }
+
+    private fun openAppPicker() {
+        try {
+            stopLockTask()
+        } catch (_: Exception) {
+        }
+        startActivity(Intent(this, AppPickerActivity::class.java))
+    }
+
+    private fun confirmUnpair() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.unpair_baby_confirm_title)
+            .setMessage(R.string.unpair_baby_confirm_message)
+            .setPositiveButton(R.string.button_confirm) { _, _ -> doUnpair() }
+            .setNegativeButton(R.string.button_cancel, null)
+            .show()
+    }
+
+    /**
+     * Rebuilds the tappable app-icon grid from [Prefs.launcherAppPackages],
+     * silently dropping any that were uninstalled since being registered.
+     */
+    private fun refreshAppGrid() {
+        binding.appGrid.removeAllViews()
+        prefs.launcherAppPackages.forEach { pkg ->
+            val appInfo = try {
+                packageManager.getApplicationInfo(pkg, 0)
+            } catch (_: Exception) {
+                return@forEach
+            }
+            val itemBinding = ItemBabyAppIconBinding.inflate(LayoutInflater.from(this), binding.appGrid, false)
+            itemBinding.ivAppIcon.setImageDrawable(appInfo.loadIcon(packageManager))
+            itemBinding.tvAppLabel.text = appInfo.loadLabel(packageManager)
+            itemBinding.root.setOnClickListener { launchRegisteredApp(pkg) }
+            binding.appGrid.addView(itemBinding.root)
+        }
+    }
+
+    private fun launchRegisteredApp(packageName: String) {
+        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return
+        try {
+            stopLockTask()
+        } catch (_: Exception) {
+        }
+        startActivity(intent)
     }
 
     private fun doUnpair() {

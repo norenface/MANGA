@@ -27,6 +27,20 @@
         android:textSize="20sp"
         android:textStyle="bold"
         app:layout_constraintTop_toBottomOf="@id/tvBabyEmoji"
+        app:layout_constraintBottom_toTopOf="@id/appGrid"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Icons for apps the caregiver registered in the app picker; empty
+         (zero-height) when none are registered. -->
+    <GridLayout
+        android:id="@+id/appGrid"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:columnCount="3"
+        android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/tvWaitingMessage"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />

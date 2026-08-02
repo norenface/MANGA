@@ -61,8 +61,17 @@
     <string name="baby_home_waiting_emoji">🧸</string>
     <string name="baby_home_waiting_message">呼ばれるのを待っているよ</string>
     <string name="baby_home_exit_hint_title">画面固定について</string>
-    <string name="baby_home_exit_hint_message">この画面は固定され、赤ちゃんが誤って他の操作をできないようになります。設定を解除して通常のホーム画面に戻りたいときは、画面の左下すみを3秒間長押しして、設定したPINを入力してください。</string>
-    <string name="pin_dialog_unpair_title">この端末の設定を解除しますか?</string>
+    <string name="baby_home_exit_hint_message">この画面は固定され、赤ちゃんが誤って他の操作をできないようになります。遊べるアプリの変更や設定解除をしたいときは、画面の左下すみを3秒間長押しして、設定したPINを入力してください。</string>
+    <string name="pin_dialog_unpair_title">PINを入力してください</string>
+    <string name="caregiver_menu_title">何をしますか?</string>
+    <string name="caregiver_menu_manage_apps">遊べるアプリを選ぶ</string>
+    <string name="caregiver_menu_unpair">この端末の設定を解除する</string>
+
+    <!-- App picker (baby device: choose apps the baby can open) -->
+    <string name="app_picker_title">遊べるアプリを選ぶ</string>
+    <string name="app_picker_subtitle">選んだアプリのアイコンが、赤ちゃんの待機画面に表示されます。タップすると起動します。</string>
+    <string name="button_save_apps">保存する</string>
+    <string name="button_manage_apps">遊べるアプリを選ぶ</string>
 
     <!-- Parent home -->
     <string name="button_call_baby">呼びかける</string>

@@ -2,6 +2,7 @@ package com.babycall
 
 import android.content.Context
 import android.content.SharedPreferences
+import org.json.JSONArray
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -85,6 +86,26 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_PEER_PUBLIC_HOST, null)
         set(value) = sp.edit().putString(KEY_PEER_PUBLIC_HOST, value).apply()
 
+    /** Baby device only: package names of apps the caregiver has approved for
+     *  the baby to open from the waiting screen. Survives app restarts and
+     *  unpairing/re-pairing (it's a property of this physical device, not of
+     *  any one family), and is only ever changed on-device via the hidden
+     *  PIN-gated menu -- a remote parent device has no way to know what's
+     *  even installed on the baby's device to offer a picker for it. */
+    var launcherAppPackages: List<String>
+        get() {
+            val raw = sp.getString(KEY_LAUNCHER_APPS, null) ?: return emptyList()
+            return runCatching {
+                val array = JSONArray(raw)
+                (0 until array.length()).map { array.getString(it) }
+            }.getOrDefault(emptyList())
+        }
+        set(value) {
+            val array = JSONArray()
+            value.forEach { array.put(it) }
+            sp.edit().putString(KEY_LAUNCHER_APPS, array.toString()).apply()
+        }
+
     val isPaired: Boolean
         get() = !familyId.isNullOrEmpty() && !role.isNullOrEmpty()
 
@@ -118,6 +139,7 @@ class Prefs(context: Context) {
         private const val KEY_PEER_DEVICE_ID = "peer_device_id"
         private const val KEY_MY_PUBLIC_HOST = "my_public_host"
         private const val KEY_PEER_PUBLIC_HOST = "peer_public_host"
+        private const val KEY_LAUNCHER_APPS = "launcher_apps"
 
         const val TRANSPORT_CLOUD = "cloud"
         const val TRANSPORT_LOCAL = "local"
