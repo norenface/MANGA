@@ -34,7 +34,7 @@ class CallListenerService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        startForegroundWithType()
+        startForegroundWithType(includeMediaProjection = false)
 
         val prefs = Prefs(this)
         val familyId = prefs.familyId
@@ -64,6 +64,11 @@ class CallListenerService : LifecycleService() {
             }
             if (resultData != null) {
                 Prefs(this).screenShareRequested = true
+                // Android 14+ requires the mediaProjection foreground service type to
+                // only be declared once real user consent has been obtained (exactly
+                // what resultData being non-null here means) -- declaring it any
+                // earlier, e.g. unconditionally in onCreate(), throws immediately.
+                startForegroundWithType(includeMediaProjection = true)
                 callManager?.grantScreenCapture(resultData)
             }
         }
@@ -101,14 +106,19 @@ class CallListenerService : LifecycleService() {
         manager.startOnlineListening()
     }
 
-    private fun startForegroundWithType() {
+    /** [includeMediaProjection] must only ever be true once real MediaProjection
+     *  consent has actually been obtained (see the ACTION_GRANT_SCREEN_CAPTURE
+     *  handling below) -- declaring that foreground service type before consent
+     *  exists throws a SecurityException on Android 14+. */
+    private fun startForegroundWithType(includeMediaProjection: Boolean) {
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
+            val type = if (includeMediaProjection) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            )
+            } else {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            }
+            startForeground(NOTIFICATION_ID, notification, type)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
