@@ -24,10 +24,13 @@ import com.babycall.screenshare.ScreenShareSetupActivity
 import com.babycall.security.PinDialog
 
 /**
- * Idle "waiting" screen shown on the baby device between calls. It is
- * pinned (Lock Task) so the device can't be used for anything other than
- * receiving the paired parent's call, and has no navigation of any kind
- * except a hidden, PIN-gated exit meant for the caregiver only.
+ * Idle "waiting" screen shown on the baby device between calls. It has no
+ * navigation of any kind -- no back button, no visible settings -- except a
+ * hidden, PIN-gated exit meant for the caregiver only. (This screen no
+ * longer uses Android's Screen Pinning / Lock Task: it was found to fight
+ * with the device's own lock screen when navigating to a registered app or
+ * the app picker, bouncing back to the real Android lock screen. Baby
+ * safety here now rests entirely on there being no visible way to leave.)
  */
 class BabyHomeActivity : AppCompatActivity() {
 
@@ -36,12 +39,6 @@ class BabyHomeActivity : AppCompatActivity() {
 
     private var holdRunnable: Runnable? = null
     private val holdHandler = android.os.Handler(android.os.Looper.getMainLooper())
-
-    /** True until the one-time exit-hint dialog's own confirm button has
-     *  engaged lock task for the first time; guards [onResume] from
-     *  re-locking (and thus fighting the dialog) before the caregiver has
-     *  even read it. */
-    private var exitHintPending = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,7 +60,7 @@ class BabyHomeActivity : AppCompatActivity() {
         }
 
         CallListenerService.start(this)
-        showExitHintThenLock()
+        showExitHint()
 
         binding.hiddenExitDot.setOnTouchListener { _, event ->
             when (event.action) {
@@ -97,16 +94,6 @@ class BabyHomeActivity : AppCompatActivity() {
         if (!prefs.isPaired || prefs.role != "baby") return
         dismissKeyguardIfNeeded()
         refreshAppGrid()
-        // Skipped on the very first resume after onCreate: the exit-hint
-        // dialog hasn't been confirmed yet, and it engages lock task itself.
-        // On every later resume (e.g. returning from a registered app that
-        // dropped lock task to launch), re-engage it here.
-        if (!exitHintPending) {
-            try {
-                startLockTask()
-            } catch (_: Exception) {
-            }
-        }
     }
 
     /**
@@ -136,18 +123,12 @@ class BabyHomeActivity : AppCompatActivity() {
      * caregiver doing setup needs to be told where it is and how it works,
      * every time this screen starts, since it's the only way back out.
      */
-    private fun showExitHintThenLock() {
+    private fun showExitHint() {
         AlertDialog.Builder(this)
             .setTitle(R.string.baby_home_exit_hint_title)
             .setMessage(R.string.baby_home_exit_hint_message)
             .setCancelable(false)
-            .setPositiveButton(R.string.button_confirm) { _, _ ->
-                exitHintPending = false
-                try {
-                    startLockTask()
-                } catch (_: Exception) {
-                }
-            }
+            .setPositiveButton(R.string.button_confirm, null)
             .show()
     }
 
@@ -180,18 +161,10 @@ class BabyHomeActivity : AppCompatActivity() {
     }
 
     private fun openAppPicker() {
-        try {
-            stopLockTask()
-        } catch (_: Exception) {
-        }
         startActivity(Intent(this, AppPickerActivity::class.java))
     }
 
     private fun openScreenShareSetup() {
-        try {
-            stopLockTask()
-        } catch (_: Exception) {
-        }
         startActivity(Intent(this, ScreenShareSetupActivity::class.java))
     }
 
@@ -226,10 +199,6 @@ class BabyHomeActivity : AppCompatActivity() {
 
     private fun launchRegisteredApp(packageName: String) {
         val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return
-        try {
-            stopLockTask()
-        } catch (_: Exception) {
-        }
         startActivity(intent)
     }
 
@@ -242,10 +211,6 @@ class BabyHomeActivity : AppCompatActivity() {
             PeerHubHolder.stop()
         }
         stopService(Intent(this, CallListenerService::class.java))
-        try {
-            stopLockTask()
-        } catch (_: Exception) {
-        }
         startActivity(Intent(this, RoleSelectActivity::class.java))
         finish()
     }

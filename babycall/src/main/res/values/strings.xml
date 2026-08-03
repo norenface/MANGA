@@ -60,8 +60,8 @@
     <!-- Baby home -->
     <string name="baby_home_waiting_emoji">🧸</string>
     <string name="baby_home_waiting_message">呼ばれるのを待っているよ</string>
-    <string name="baby_home_exit_hint_title">画面固定について</string>
-    <string name="baby_home_exit_hint_message">この画面は固定され、赤ちゃんが誤って他の操作をできないようになります。遊べるアプリの変更や設定解除をしたいときは、画面の左下すみを3秒間長押しして、設定したPINを入力してください。</string>
+    <string name="baby_home_exit_hint_title">設定の開き方</string>
+    <string name="baby_home_exit_hint_message">遊べるアプリの変更や設定解除をしたいときは、画面の左下すみを3秒間長押しして、設定したPINを入力してください(赤ちゃんが偶然見つけないよう、見た目には何も表示されません)。</string>
     <string name="pin_dialog_unpair_title">PINを入力してください</string>
     <string name="caregiver_menu_title">何をしますか?</string>
     <string name="caregiver_menu_manage_apps">遊べるアプリを選ぶ</string>
