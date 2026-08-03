@@ -1,5 +1,6 @@
 package com.babycall.home
 
+import android.app.KeyguardManager
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Build
@@ -94,6 +95,7 @@ class BabyHomeActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (!prefs.isPaired || prefs.role != "baby") return
+        dismissKeyguardIfNeeded()
         refreshAppGrid()
         // Skipped on the very first resume after onCreate: the exit-hint
         // dialog hasn't been confirmed yet, and it engages lock task itself.
@@ -104,6 +106,27 @@ class BabyHomeActivity : AppCompatActivity() {
                 startLockTask()
             } catch (_: Exception) {
             }
+        }
+    }
+
+    /**
+     * FLAG_DISMISS_KEYGUARD (set alongside FLAG_SHOW_WHEN_LOCKED in [onCreate])
+     * only has any effect when the device has no PIN/pattern/fingerprint set --
+     * for a secure lock screen it's a no-op, so this waiting screen would keep
+     * appearing to sit "on top of" a keyguard that's still actually locked
+     * underneath, and the moment the baby taps into a registered app (which
+     * has no such flags of its own), the real lock screen would resurface.
+     * [KeyguardManager.requestDismissKeyguard] is the API that can actually
+     * clear a secure keyguard, so every time this screen resumes (including
+     * returning from a registered app or the app picker) it's asked to do so.
+     * If a lock screen is set on this device, the caregiver will see the
+     * normal system unlock prompt the first time; nothing more can be done
+     * about that without either removing the lock screen on this dedicated
+     * device (recommended) or enrolling it as Device Owner.
+     */
+    private fun dismissKeyguardIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            (getSystemService(KEYGUARD_SERVICE) as? KeyguardManager)?.requestDismissKeyguard(this, null)
         }
     }
 
