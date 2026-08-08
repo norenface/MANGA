@@ -162,6 +162,14 @@
                 android:textSize="14sp" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCopyCode"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="16dp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:text="@string/button_copy_code" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnManageApps"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"

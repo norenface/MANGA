@@ -22,6 +22,7 @@ import com.babycall.local.LocalCallServerHolder
 import com.babycall.peer.PeerHubHolder
 import com.babycall.screenshare.ScreenShareSetupActivity
 import com.babycall.security.PinDialog
+import com.babycall.util.ClipboardUtil
 
 /**
  * Idle "waiting" screen shown on the baby device between calls. It has no
@@ -143,6 +144,7 @@ class BabyHomeActivity : AppCompatActivity() {
 
     private fun showCaregiverMenu() {
         val options = arrayOf(
+            getString(R.string.caregiver_menu_view_code),
             getString(R.string.caregiver_menu_manage_apps),
             getString(R.string.caregiver_menu_screen_share),
             getString(R.string.caregiver_menu_unpair)
@@ -151,12 +153,25 @@ class BabyHomeActivity : AppCompatActivity() {
             .setTitle(R.string.caregiver_menu_title)
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> openAppPicker()
-                    1 -> openScreenShareSetup()
-                    2 -> confirmUnpair()
+                    0 -> showFamilyCodeDialog()
+                    1 -> openAppPicker()
+                    2 -> openScreenShareSetup()
+                    3 -> confirmUnpair()
                 }
             }
             .setNegativeButton(R.string.button_cancel, null)
+            .show()
+    }
+
+    /** Redisplays the family code (otherwise only ever shown once, during setup),
+     *  with a one-tap copy so it can be shared without retyping. */
+    private fun showFamilyCodeDialog() {
+        val code = prefs.familyId ?: return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.baby_code_title)
+            .setMessage(code.chunked(3).joinToString(" "))
+            .setPositiveButton(R.string.button_copy_code) { _, _ -> ClipboardUtil.copyFamilyCode(this, code) }
+            .setNegativeButton(R.string.button_close, null)
             .show()
     }
 

@@ -16,6 +16,7 @@ import com.babycall.launcher.AppPickerActivity
 import com.babycall.local.LocalPairingHost
 import com.babycall.peer.PeerProtocol
 import com.babycall.screenshare.ScreenShareSetupActivity
+import com.babycall.util.ClipboardUtil
 
 /**
  * Sets up this device as the baby's: generates the family's code itself
@@ -31,6 +32,7 @@ class BabySetupActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private var localHost: LocalPairingHost? = null
     private var paired = false
+    private var currentCode: String? = null
 
     private val requiredPermissions = buildList {
         add(Manifest.permission.CAMERA)
@@ -65,6 +67,9 @@ class BabySetupActivity : AppCompatActivity() {
         }
         binding.btnScreenShareSetup.setOnClickListener {
             startActivity(Intent(this@BabySetupActivity, ScreenShareSetupActivity::class.java))
+        }
+        binding.btnCopyCode.setOnClickListener {
+            currentCode?.let { code -> ClipboardUtil.copyFamilyCode(this@BabySetupActivity, code) }
         }
         binding.btnDone.setOnClickListener {
             CallListenerService.start(this@BabySetupActivity)
@@ -149,6 +154,7 @@ class BabySetupActivity : AppCompatActivity() {
     }
 
     private fun showCodeStep(code: String, connected: Boolean) {
+        currentCode = code
         binding.groupInput.visibility = android.view.View.GONE
         binding.groupCode.visibility = android.view.View.VISIBLE
         binding.tvCode.text = code.chunked(3).joinToString(" ")

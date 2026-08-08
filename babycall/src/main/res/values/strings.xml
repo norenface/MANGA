@@ -25,6 +25,8 @@
     <string name="baby_code_instructions">この番号を、通話したいご家族に伝えてください。</string>
     <string name="baby_code_instructions_waiting">同じWi-Fi内で、この番号を伝えたい方に「通話に参加する」から入力してもらってください。入力が完了するまでこの画面を閉じないでください。</string>
     <string name="baby_code_instructions_ready">この番号はずっと使えます。通話したいご家族に伝えてください。相手はBabyCallアプリで「通話に参加する」を選び、この番号を入力するだけで、いつでも赤ちゃんに呼びかけられるようになります。</string>
+    <string name="button_copy_code">番号をコピーする</string>
+    <string name="toast_code_copied">番号をコピーしました</string>
 
     <!-- Join a call (any viewer: parent, grandparent, ...) -->
     <string name="join_family_title">通話に参加する</string>
@@ -64,6 +66,7 @@
     <string name="baby_home_exit_hint_message">遊べるアプリの変更や設定解除をしたいときは、画面の左下すみを3秒間長押しして、設定したPINを入力してください(赤ちゃんが偶然見つけないよう、見た目には何も表示されません)。</string>
     <string name="pin_dialog_unpair_title">PINを入力してください</string>
     <string name="caregiver_menu_title">何をしますか?</string>
+    <string name="caregiver_menu_view_code">家族に伝える番号を確認する</string>
     <string name="caregiver_menu_manage_apps">遊べるアプリを選ぶ</string>
     <string name="caregiver_menu_screen_share">画面共有を設定する</string>
     <string name="caregiver_menu_unpair">この端末の設定を解除する</string>
@@ -119,4 +122,5 @@
     <!-- Shared dialogs -->
     <string name="button_confirm">決定</string>
     <string name="button_cancel">キャンセル</string>
+    <string name="button_close">閉じる</string>
 </resources>
