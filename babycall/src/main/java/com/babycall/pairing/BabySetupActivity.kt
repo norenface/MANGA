@@ -56,6 +56,20 @@ class BabySetupActivity : AppCompatActivity() {
         setContentView(binding.root)
         prefs = Prefs(this)
 
+        // Setup already completed in a previous run of this screen (its process
+        // was killed while backgrounded, e.g. while showing the code step before
+        // "ホームへ" was tapped) -- go straight to the waiting screen instead of
+        // showing the input form again. Re-submitting it here would silently
+        // generate a brand new family code (or, for local mode, a new pairing
+        // token), breaking whatever had already been shared with family or
+        // already paired. The code can still be viewed again from the hidden
+        // PIN menu on the waiting screen.
+        if (prefs.isPaired && prefs.role == "baby") {
+            startActivity(Intent(this, BabyHomeActivity::class.java))
+            finish()
+            return
+        }
+
         val missing = requiredPermissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
