@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DQ自動周回</string>
+
+    <!-- Login -->
+    <string name="login_dialog_title">ログイン情報</string>
+    <string name="login_dialog_message">IDとパスワードはこの端末にのみ保存され、ソースコードには含まれません。</string>
+    <string name="hint_login_id">ID</string>
+    <string name="hint_login_password">パスワード</string>
+    <string name="button_login">ログインする</string>
+    <string name="button_cancel">キャンセル</string>
+
+    <!-- Main controls -->
+    <string name="button_login_settings">ログイン設定</string>
+    <string name="button_start_automation">自動化を開始</string>
+    <string name="button_stop_automation">自動化を停止</string>
+
+    <!-- Status messages -->
+    <string name="status_idle">待機中</string>
+    <string name="status_starting">自動化を開始しました</string>
+    <string name="status_stopped">自動化を停止しました</string>
+    <string name="status_clicking">「%1$s」を探しています…</string>
+    <string name="status_link_not_found">「%1$s」が見つかりません。再試行します…</string>
+    <string name="status_cycle_wait">%1$d周目完了。%2$d秒後に次を開始します…</string>
+</resources>

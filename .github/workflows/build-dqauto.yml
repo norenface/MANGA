@@ -1,0 +1,51 @@
+name: Build DQAuto
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'dqauto/**'
+      - 'settings.gradle'
+      - 'build.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/build-dqauto.yml'
+  pull_request:
+    paths:
+      - 'dqauto/**'
+      - 'settings.gradle'
+      - 'build.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/build-dqauto.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build DQAuto debug APK
+        run: ./gradlew :dqauto:assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dqauto-debug-apk
+          path: dqauto/build/outputs/apk/debug/dqauto-debug.apk
+          if-no-files-found: error

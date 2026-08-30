@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- simple auto-play glyph: white circle with a play triangle -->
+    <path
+        android:pathData="M54,54 m-30,0 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M46,38 L46,70 L74,54 Z"
+        android:fillColor="#3F51B5" />
+</vector>
