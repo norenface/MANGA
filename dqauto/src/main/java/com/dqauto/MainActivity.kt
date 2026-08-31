@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.WindowManager
+import android.webkit.JsResult
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AlertDialog
@@ -69,6 +71,22 @@ class MainActivity : AppCompatActivity() {
                     awaitingNavigation = false
                     advanceStep()
                 }
+            }
+        }
+        // Without a WebChromeClient, a JS confirm()/alert() the site pops up
+        // (e.g. "本当によろしいですか?" before submitting a battle) has nothing to
+        // render it and is silently dropped/cancelled -- which can silently
+        // abort the very click we just made. Auto-accept both so they never
+        // block anything.
+        binding.webView.webChromeClient = object : WebChromeClient() {
+            override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                result?.confirm()
+                return true
+            }
+
+            override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                result?.confirm()
+                return true
             }
         }
 
@@ -152,6 +170,7 @@ class MainActivity : AppCompatActivity() {
             if (result == "true") {
                 consecutiveFailures = 0
                 awaitingNavigation = true
+                armNavigationTimeout()
             } else {
                 consecutiveFailures++
                 if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
@@ -170,6 +189,25 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Not every click is guaranteed to trigger a full page load that
+     * [WebViewClient.onPageFinished] would report -- the action might be an
+     * in-place AJAX update, or a JS confirm() dialog might have silently
+     * swallowed it despite [WebChromeClient.onJsConfirm] auto-accepting it.
+     * Either way, without this, a click that doesn't navigate would leave
+     * [awaitingNavigation] stuck true forever with nothing left to advance
+     * it. If nothing has cleared the flag by the time this fires, force the
+     * move to the next step anyway.
+     */
+    private fun armNavigationTimeout() {
+        handler.postDelayed({
+            if (running && awaitingNavigation) {
+                awaitingNavigation = false
+                advanceStep()
+            }
+        }, NAVIGATION_TIMEOUT_MS)
     }
 
     private fun advanceStep() {
@@ -199,7 +237,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (running && !awaitingNavigation && !recovering) {
+        if (!running || recovering) return
+        if (awaitingNavigation) {
+            // onPause() cancelled the timeout that was covering this wait; put
+            // a fresh one back so it can't end up stuck here indefinitely.
+            armNavigationTimeout()
+        } else {
             runCurrentStep()
         }
     }
@@ -310,6 +353,10 @@ class MainActivity : AppCompatActivity() {
 
         private const val STEP_DELAY_MS = 1500L
         private const val RETRY_DELAY_MS = 2000L
+
+        // How long to wait for onPageFinished after a successful click before
+        // giving up on it and advancing anyway -- see armNavigationTimeout().
+        private const val NAVIGATION_TIMEOUT_MS = 8000L
 
         // After this many consecutive failed attempts at the same step (an
         // unexpected interstitial page, most likely), re-login instead of
