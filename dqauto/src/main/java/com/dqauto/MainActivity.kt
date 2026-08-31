@@ -41,6 +41,12 @@ class MainActivity : AppCompatActivity() {
     private var currentStepIndex = 0
     private var awaitingNavigation = false
     private var cycleCount = 0
+    private var consecutiveFailures = 0
+
+    /** True while waiting for the page load [loadLoginUrl] kicked off as a
+     *  recovery attempt (see [runCurrentStep]); on completion, retries the
+     *  current step from scratch instead of advancing to the next one. */
+    private var recovering = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,7 +62,10 @@ class MainActivity : AppCompatActivity() {
         binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                if (awaitingNavigation) {
+                if (recovering) {
+                    recovering = false
+                    if (running) handler.postDelayed({ runCurrentStep() }, STEP_DELAY_MS)
+                } else if (awaitingNavigation) {
                     awaitingNavigation = false
                     advanceStep()
                 }
@@ -125,6 +134,8 @@ class MainActivity : AppCompatActivity() {
     private fun stopAutomation() {
         running = false
         awaitingNavigation = false
+        recovering = false
+        consecutiveFailures = 0
         handler.removeCallbacksAndMessages(null)
         binding.btnToggleAutomation.setText(R.string.button_start_automation)
         setStatus(getString(R.string.status_stopped))
@@ -139,10 +150,24 @@ class MainActivity : AppCompatActivity() {
             // evaluateJavascript returns a JSON-quoted string, e.g. "\"true\"".
             val result = rawResult?.trim('"')
             if (result == "true") {
+                consecutiveFailures = 0
                 awaitingNavigation = true
             } else {
-                setStatus(getString(R.string.status_link_not_found, step.describe()))
-                handler.postDelayed({ runCurrentStep() }, RETRY_DELAY_MS)
+                consecutiveFailures++
+                if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                    // Stuck on this step for too long -- likely an interstitial
+                    // page (an announcement, a cooldown notice, ...) that
+                    // doesn't have what we're looking for. Re-loading the login
+                    // URL re-authenticates and lands back on a known-good
+                    // status page, then retries the same step from there.
+                    consecutiveFailures = 0
+                    recovering = true
+                    setStatus(getString(R.string.status_recovering, step.describe()))
+                    loadLoginUrl()
+                } else {
+                    setStatus(getString(R.string.status_link_not_found, step.describe()))
+                    handler.postDelayed({ runCurrentStep() }, RETRY_DELAY_MS)
+                }
             }
         }
     }
@@ -174,7 +199,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (running && !awaitingNavigation) {
+        if (running && !awaitingNavigation && !recovering) {
             runCurrentStep()
         }
     }
@@ -285,5 +310,10 @@ class MainActivity : AppCompatActivity() {
 
         private const val STEP_DELAY_MS = 1500L
         private const val RETRY_DELAY_MS = 2000L
+
+        // After this many consecutive failed attempts at the same step (an
+        // unexpected interstitial page, most likely), re-login instead of
+        // retrying forever -- see the recovery branch in runCurrentStep().
+        private const val MAX_CONSECUTIVE_FAILURES = 8
     }
 }

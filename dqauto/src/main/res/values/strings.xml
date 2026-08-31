@@ -22,4 +22,5 @@
     <string name="status_clicking">「%1$s」を探しています…</string>
     <string name="status_link_not_found">「%1$s」が見つかりません。再試行します…</string>
     <string name="status_cycle_wait">%1$d周目完了。%2$d秒後に次を開始します…</string>
+    <string name="status_recovering">「%1$s」が長時間見つからないため、再ログインします…</string>
 </resources>
