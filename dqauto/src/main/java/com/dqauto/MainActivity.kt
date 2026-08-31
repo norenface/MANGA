@@ -16,18 +16,20 @@ import org.json.JSONObject
 
 /**
  * Logs into the browser game with a locally-stored ID/password and then
- * repeatedly clicks through a fixed sequence of text links -- シングルバトル
- * (single battle) -> アレフガルド (Alefgard selection) -> ステータス (back to
- * status) -- waiting for each page to finish loading before clicking the
- * next, then pausing [Prefs.cycleIntervalSeconds] before starting the next
- * cycle. Only runs while this screen is visible; backgrounding the app
- * pauses it (see [onPause]/[onResume]).
+ * repeatedly performs a fixed sequence of steps on the status page --
+ * pick "アレフガルド" in the シングルバトル dropdown and press 「モンスターを
+ * しばく」, then click the 「ステータス」 link to come back -- waiting for
+ * each page to finish loading before doing the next step, then pausing
+ * [Prefs.cycleIntervalSeconds] before starting the next cycle. Only runs
+ * while this screen is visible; backgrounding the app pauses it (see
+ * [onPause]/[onResume]).
  *
- * The [STEPS] link-text substrings were provided by the user, not verified
- * against the live site (this environment's network policy blocks fetching
- * it) -- if a step's link isn't found, the status line will say so and keep
- * retrying, which is the signal to double check the exact wording on the
- * actual page and adjust [STEPS] accordingly.
+ * The [STEPS] text used to find the right dropdown option/buttons/links was
+ * described by the user, not verified against the live site directly (this
+ * environment's network policy blocks fetching it) -- if a step doesn't
+ * find its target, the status line will say so and keep retrying, which is
+ * the signal to double check the exact wording on the actual page and
+ * adjust [STEPS] accordingly.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -117,7 +119,7 @@ class MainActivity : AppCompatActivity() {
         currentStepIndex = 0
         binding.btnToggleAutomation.setText(R.string.button_stop_automation)
         setStatus(getString(R.string.status_starting))
-        clickCurrentStep()
+        runCurrentStep()
     }
 
     private fun stopAutomation() {
@@ -128,17 +130,19 @@ class MainActivity : AppCompatActivity() {
         setStatus(getString(R.string.status_stopped))
     }
 
-    private fun clickCurrentStep() {
+    private fun runCurrentStep() {
         if (!running) return
-        val targetText = STEPS[currentStepIndex]
-        setStatus(getString(R.string.status_clicking, targetText))
-        binding.webView.evaluateJavascript(buildClickScript(targetText)) { result ->
+        val step = STEPS[currentStepIndex]
+        setStatus(getString(R.string.status_clicking, step.describe()))
+        binding.webView.evaluateJavascript(step.buildScript()) { rawResult ->
             if (!running) return@evaluateJavascript
+            // evaluateJavascript returns a JSON-quoted string, e.g. "\"true\"".
+            val result = rawResult?.trim('"')
             if (result == "true") {
                 awaitingNavigation = true
             } else {
-                setStatus(getString(R.string.status_link_not_found, targetText))
-                handler.postDelayed({ clickCurrentStep() }, RETRY_DELAY_MS)
+                setStatus(getString(R.string.status_link_not_found, step.describe()))
+                handler.postDelayed({ runCurrentStep() }, RETRY_DELAY_MS)
             }
         }
     }
@@ -151,30 +155,10 @@ class MainActivity : AppCompatActivity() {
             cycleCount++
             val intervalSeconds = prefs.cycleIntervalSeconds
             setStatus(getString(R.string.status_cycle_wait, cycleCount, intervalSeconds))
-            handler.postDelayed({ clickCurrentStep() }, intervalSeconds * 1000L)
+            handler.postDelayed({ runCurrentStep() }, intervalSeconds * 1000L)
         } else {
-            handler.postDelayed({ clickCurrentStep() }, STEP_DELAY_MS)
+            handler.postDelayed({ runCurrentStep() }, STEP_DELAY_MS)
         }
-    }
-
-    /** Finds the first link/button whose visible text contains [targetText] and clicks it. */
-    private fun buildClickScript(targetText: String): String {
-        val quotedTarget = JSONObject.quote(targetText)
-        return """
-            (function() {
-                var target = $quotedTarget;
-                var els = document.querySelectorAll('a, input[type="submit"], input[type="button"], button');
-                for (var i = 0; i < els.length; i++) {
-                    var el = els[i];
-                    var text = (el.innerText || el.value || el.textContent || '').trim();
-                    if (text.indexOf(target) !== -1) {
-                        el.click();
-                        return true;
-                    }
-                }
-                return false;
-            })();
-        """.trimIndent()
     }
 
     private fun setStatus(text: String) {
@@ -191,7 +175,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (running && !awaitingNavigation) {
-            clickCurrentStep()
+            runCurrentStep()
         }
     }
 
@@ -201,13 +185,103 @@ class MainActivity : AppCompatActivity() {
         binding.webView.destroy()
     }
 
+    /** One action in the repeating cycle; each produces a JS snippet returning "true"/"false". */
+    private sealed class AutomationStep {
+
+        abstract fun describe(): String
+        abstract fun buildScript(): String
+
+        /**
+         * Picks the option containing [optionText] in the `<select>` nearest to
+         * (an ancestor of, or preceding) the button whose text contains
+         * [buttonText], then clicks that button -- the シングルバトル row's
+         * "opponent" dropdown plus its 「モンスターをしばく」 submit button.
+         */
+        data class SelectThenClick(val optionText: String, val buttonText: String) : AutomationStep() {
+            override fun describe() = "$optionText / $buttonText"
+
+            override fun buildScript(): String {
+                val quotedButtonText = JSONObject.quote(buttonText)
+                val quotedOptionText = JSONObject.quote(optionText)
+                return """
+                    (function() {
+                        var buttonText = $quotedButtonText;
+                        var optionText = $quotedOptionText;
+
+                        var btn = null;
+                        var candidates = document.querySelectorAll('a, input, button');
+                        for (var i = 0; i < candidates.length; i++) {
+                            var el = candidates[i];
+                            var text = (el.innerText || el.value || el.textContent || '').trim();
+                            if (text.indexOf(buttonText) !== -1) { btn = el; break; }
+                        }
+                        if (!btn) return 'false';
+
+                        // Walk up from the button to the nearest ancestor that also
+                        // contains a <select> -- the dropdown for this same row.
+                        var container = btn.parentElement;
+                        var select = null;
+                        while (container && !select) {
+                            select = container.querySelector('select');
+                            container = container.parentElement;
+                        }
+                        if (!select) return 'false';
+
+                        var matched = false;
+                        for (var j = 0; j < select.options.length; j++) {
+                            if (select.options[j].text.indexOf(optionText) !== -1) {
+                                select.selectedIndex = j;
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (!matched) return 'false';
+
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                        btn.click();
+                        return 'true';
+                    })();
+                """.trimIndent()
+            }
+        }
+
+        /** Finds the first link/button whose visible text contains [text] and clicks it. */
+        data class ClickText(val text: String) : AutomationStep() {
+            override fun describe() = text
+
+            override fun buildScript(): String {
+                val quotedText = JSONObject.quote(text)
+                return """
+                    (function() {
+                        var target = $quotedText;
+                        var els = document.querySelectorAll('a, input[type="submit"], input[type="button"], button');
+                        for (var i = 0; i < els.length; i++) {
+                            var el = els[i];
+                            var text = (el.innerText || el.value || el.textContent || '').trim();
+                            if (text.indexOf(target) !== -1) {
+                                el.click();
+                                return 'true';
+                            }
+                        }
+                        return 'false';
+                    })();
+                """.trimIndent()
+            }
+        }
+    }
+
     companion object {
         private const val BASE_URL = "https://app.h3z.jp/games/dqa5/dqadventure5.cgi"
 
-        // Substrings searched for within visible link/button text, in the order
-        // they're clicked each cycle. Update these if they don't match the
-        // site's actual wording -- see the class doc comment.
-        private val STEPS = listOf("シングルバトル", "アレフガルド", "ステータス")
+        // The status page's シングルバトル row: a dropdown of opponents (choose
+        // the one containing "アレフガルド") next to a 「モンスターをしばく」
+        // button that submits it, then a 「ステータス」 link to come back.
+        // Update these if they don't match the site's actual wording -- see
+        // the class doc comment.
+        private val STEPS: List<AutomationStep> = listOf(
+            AutomationStep.SelectThenClick(optionText = "アレフガルド", buttonText = "モンスターをしばく"),
+            AutomationStep.ClickText("ステータス")
+        )
 
         private const val STEP_DELAY_MS = 1500L
         private const val RETRY_DELAY_MS = 2000L
