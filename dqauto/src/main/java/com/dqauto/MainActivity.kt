@@ -1,94 +1,83 @@
 package com.dqauto
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.view.WindowManager
-import android.webkit.JsResult
-import android.webkit.WebChromeClient
+import android.os.IBinder
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.dqauto.databinding.ActivityMainBinding
 import com.dqauto.databinding.DialogLoginBinding
-import org.json.JSONObject
 
 /**
- * Logs into the browser game with a locally-stored ID/password and then
- * repeatedly performs a fixed sequence of steps on the status page --
- * pick "アレフガルド" in the シングルバトル dropdown and press 「モンスターを
- * しばく」, then click the 「ステータス」 link to come back -- waiting for
- * each page to finish loading before doing the next step, then pausing
- * [Prefs.cycleIntervalSeconds] before starting the next cycle. Only runs
- * while this screen is visible; backgrounding the app pauses it (see
- * [onPause]/[onResume]).
- *
- * The [STEPS] text used to find the right dropdown option/buttons/links was
- * described by the user, not verified against the live site directly (this
- * environment's network policy blocks fetching it) -- if a step doesn't
- * find its target, the status line will say so and keep retrying, which is
- * the signal to double check the exact wording on the actual page and
- * adjust [STEPS] accordingly.
+ * This screen's own [WebView] is only for logging in and letting the
+ * caregiver look around manually -- the actual automation loop runs
+ * independently in [AutomationService] (its own separate WebView/session),
+ * so it keeps going after this screen is closed or the app is backgrounded.
+ * "自動化を開始/停止" starts/stops that service; while bound to it, this
+ * screen mirrors its live status text and running state.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: Prefs
-    private val handler = Handler(Looper.getMainLooper())
 
-    private var running = false
-    private var currentStepIndex = 0
-    private var awaitingNavigation = false
-    private var cycleCount = 0
-    private var consecutiveFailures = 0
+    private var automationService: AutomationService? = null
 
-    /** True while waiting for the page load [loadLoginUrl] kicked off as a
-     *  recovery attempt (see [runCurrentStep]); on completion, retries the
-     *  current step from scratch instead of advancing to the next one. */
-    private var recovering = false
+    /** Set when "start" was tapped before the service finished (re)binding;
+     *  consumed by [onServiceConnected] as soon as it does. */
+    private var pendingStart = false
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val bound = (service as AutomationService.LocalBinder).getService()
+            automationService = bound
+            bound.onStatusChanged = { text -> runOnUiThread { setStatus(text) } }
+            if (pendingStart) {
+                pendingStart = false
+                bound.startAutomation()
+            }
+            setStatus(bound.currentStatus())
+            updateToggleButton(bound.isAutomationRunning())
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            automationService?.onStatusChanged = null
+            automationService = null
+        }
+    }
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = Prefs(this)
 
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
         binding.webView.settings.javaScriptEnabled = true
         binding.webView.settings.domStorageEnabled = true
-        binding.webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                if (recovering) {
-                    recovering = false
-                    if (running) handler.postDelayed({ runCurrentStep() }, STEP_DELAY_MS)
-                } else if (awaitingNavigation) {
-                    awaitingNavigation = false
-                    advanceStep()
-                }
-            }
-        }
-        // Without a WebChromeClient, a JS confirm()/alert() the site pops up
-        // (e.g. "本当によろしいですか?" before submitting a battle) has nothing to
-        // render it and is silently dropped/cancelled -- which can silently
-        // abort the very click we just made. Auto-accept both so they never
-        // block anything.
-        binding.webView.webChromeClient = object : WebChromeClient() {
-            override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
-                result?.confirm()
-                return true
-            }
-
-            override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
-                result?.confirm()
-                return true
-            }
-        }
+        binding.webView.webViewClient = WebViewClient()
 
         binding.btnLoginSettings.setOnClickListener { showLoginDialog() }
         binding.btnToggleAutomation.setOnClickListener { toggleAutomation() }
@@ -98,6 +87,18 @@ class MainActivity : AppCompatActivity() {
         } else {
             showLoginDialog()
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        bindService(Intent(this, AutomationService::class.java), serviceConnection, Context.BIND_AUTO_CREATE)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        automationService?.onStatusChanged = null
+        unbindService(serviceConnection)
+        automationService = null
     }
 
     private fun loadLoginUrl() {
@@ -134,233 +135,43 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleAutomation() {
-        if (running) stopAutomation() else startAutomation()
-    }
-
-    private fun startAutomation() {
-        if (!prefs.hasLogin) {
-            showLoginDialog()
-            return
-        }
-        running = true
-        currentStepIndex = 0
-        binding.btnToggleAutomation.setText(R.string.button_stop_automation)
-        setStatus(getString(R.string.status_starting))
-        runCurrentStep()
-    }
-
-    private fun stopAutomation() {
-        running = false
-        awaitingNavigation = false
-        recovering = false
-        consecutiveFailures = 0
-        handler.removeCallbacksAndMessages(null)
-        binding.btnToggleAutomation.setText(R.string.button_start_automation)
-        setStatus(getString(R.string.status_stopped))
-    }
-
-    private fun runCurrentStep() {
-        if (!running) return
-        val step = STEPS[currentStepIndex]
-        setStatus(getString(R.string.status_clicking, step.describe()))
-        binding.webView.evaluateJavascript(step.buildScript()) { rawResult ->
-            if (!running) return@evaluateJavascript
-            // evaluateJavascript returns a JSON-quoted string, e.g. "\"true\"".
-            val result = rawResult?.trim('"')
-            if (result == "true") {
-                consecutiveFailures = 0
-                awaitingNavigation = true
-                armNavigationTimeout()
-            } else {
-                consecutiveFailures++
-                if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-                    // Stuck on this step for too long -- likely an interstitial
-                    // page (an announcement, a cooldown notice, ...) that
-                    // doesn't have what we're looking for. Re-loading the login
-                    // URL re-authenticates and lands back on a known-good
-                    // status page, then retries the same step from there.
-                    consecutiveFailures = 0
-                    recovering = true
-                    setStatus(getString(R.string.status_recovering, step.describe()))
-                    loadLoginUrl()
-                } else {
-                    setStatus(getString(R.string.status_link_not_found, step.describe()))
-                    handler.postDelayed({ runCurrentStep() }, RETRY_DELAY_MS)
-                }
-            }
-        }
-    }
-
-    /**
-     * Not every click is guaranteed to trigger a full page load that
-     * [WebViewClient.onPageFinished] would report -- the action might be an
-     * in-place AJAX update, or a JS confirm() dialog might have silently
-     * swallowed it despite [WebChromeClient.onJsConfirm] auto-accepting it.
-     * Either way, without this, a click that doesn't navigate would leave
-     * [awaitingNavigation] stuck true forever with nothing left to advance
-     * it. If nothing has cleared the flag by the time this fires, force the
-     * move to the next step anyway.
-     */
-    private fun armNavigationTimeout() {
-        handler.postDelayed({
-            if (running && awaitingNavigation) {
-                awaitingNavigation = false
-                advanceStep()
-            }
-        }, NAVIGATION_TIMEOUT_MS)
-    }
-
-    private fun advanceStep() {
-        if (!running) return
-        currentStepIndex++
-        if (currentStepIndex >= STEPS.size) {
-            currentStepIndex = 0
-            cycleCount++
-            val intervalSeconds = prefs.cycleIntervalSeconds
-            setStatus(getString(R.string.status_cycle_wait, cycleCount, intervalSeconds))
-            handler.postDelayed({ runCurrentStep() }, intervalSeconds * 1000L)
+        val service = automationService
+        if (service != null && service.isAutomationRunning()) {
+            service.stopAutomation()
+            AutomationService.stop(this)
+            updateToggleButton(false)
         } else {
-            handler.postDelayed({ runCurrentStep() }, STEP_DELAY_MS)
+            if (!prefs.hasLogin) {
+                showLoginDialog()
+                return
+            }
+            // onStart() already binds, so the service is normally already
+            // connected by the time this button is reachable; startAutomation()
+            // just runs immediately. On the rare chance it isn't yet, starting
+            // the service here ensures it exists, and pendingStart has
+            // onServiceConnected call startAutomation() as soon as it binds.
+            AutomationService.start(this)
+            if (service != null) {
+                service.startAutomation()
+                updateToggleButton(true)
+            } else {
+                pendingStart = true
+                setStatus(getString(R.string.status_starting))
+            }
         }
+    }
+
+    private fun updateToggleButton(running: Boolean) {
+        binding.btnToggleAutomation.setText(
+            if (running) R.string.button_stop_automation else R.string.button_start_automation
+        )
     }
 
     private fun setStatus(text: String) {
-        binding.tvStatus.text = text
-    }
-
-    override fun onPause() {
-        super.onPause()
-        // Stops scheduling further steps, but leaves `running`/currentStepIndex
-        // alone so onResume can just pick back up from where it left off.
-        handler.removeCallbacksAndMessages(null)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (!running || recovering) return
-        if (awaitingNavigation) {
-            // onPause() cancelled the timeout that was covering this wait; put
-            // a fresh one back so it can't end up stuck here indefinitely.
-            armNavigationTimeout()
-        } else {
-            runCurrentStep()
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        handler.removeCallbacksAndMessages(null)
-        binding.webView.destroy()
-    }
-
-    /** One action in the repeating cycle; each produces a JS snippet returning "true"/"false". */
-    private sealed class AutomationStep {
-
-        abstract fun describe(): String
-        abstract fun buildScript(): String
-
-        /**
-         * Picks the option containing [optionText] in the `<select>` nearest to
-         * (an ancestor of, or preceding) the button whose text contains
-         * [buttonText], then clicks that button -- the シングルバトル row's
-         * "opponent" dropdown plus its 「モンスターをしばく」 submit button.
-         */
-        data class SelectThenClick(val optionText: String, val buttonText: String) : AutomationStep() {
-            override fun describe() = "$optionText / $buttonText"
-
-            override fun buildScript(): String {
-                val quotedButtonText = JSONObject.quote(buttonText)
-                val quotedOptionText = JSONObject.quote(optionText)
-                return """
-                    (function() {
-                        var buttonText = $quotedButtonText;
-                        var optionText = $quotedOptionText;
-
-                        var btn = null;
-                        var candidates = document.querySelectorAll('a, input, button');
-                        for (var i = 0; i < candidates.length; i++) {
-                            var el = candidates[i];
-                            var text = (el.innerText || el.value || el.textContent || '').trim();
-                            if (text.indexOf(buttonText) !== -1) { btn = el; break; }
-                        }
-                        if (!btn) return 'false';
-
-                        // Walk up from the button to the nearest ancestor that also
-                        // contains a <select> -- the dropdown for this same row.
-                        var container = btn.parentElement;
-                        var select = null;
-                        while (container && !select) {
-                            select = container.querySelector('select');
-                            container = container.parentElement;
-                        }
-                        if (!select) return 'false';
-
-                        var matched = false;
-                        for (var j = 0; j < select.options.length; j++) {
-                            if (select.options[j].text.indexOf(optionText) !== -1) {
-                                select.selectedIndex = j;
-                                matched = true;
-                                break;
-                            }
-                        }
-                        if (!matched) return 'false';
-
-                        select.dispatchEvent(new Event('change', { bubbles: true }));
-                        btn.click();
-                        return 'true';
-                    })();
-                """.trimIndent()
-            }
-        }
-
-        /** Finds the first link/button whose visible text contains [text] and clicks it. */
-        data class ClickText(val text: String) : AutomationStep() {
-            override fun describe() = text
-
-            override fun buildScript(): String {
-                val quotedText = JSONObject.quote(text)
-                return """
-                    (function() {
-                        var target = $quotedText;
-                        var els = document.querySelectorAll('a, input[type="submit"], input[type="button"], button');
-                        for (var i = 0; i < els.length; i++) {
-                            var el = els[i];
-                            var text = (el.innerText || el.value || el.textContent || '').trim();
-                            if (text.indexOf(target) !== -1) {
-                                el.click();
-                                return 'true';
-                            }
-                        }
-                        return 'false';
-                    })();
-                """.trimIndent()
-            }
-        }
+        if (text.isNotEmpty()) binding.tvStatus.text = text
     }
 
     companion object {
         private const val BASE_URL = "https://app.h3z.jp/games/dqa5/dqadventure5.cgi"
-
-        // The status page's シングルバトル row: a dropdown of opponents (choose
-        // the one containing "アレフガルド") next to a 「モンスターをしばく」
-        // button that submits it, then a 「ステータス」 link to come back.
-        // Update these if they don't match the site's actual wording -- see
-        // the class doc comment.
-        private val STEPS: List<AutomationStep> = listOf(
-            AutomationStep.SelectThenClick(optionText = "アレフガルド", buttonText = "モンスターをしばく"),
-            AutomationStep.ClickText("ステータス")
-        )
-
-        private const val STEP_DELAY_MS = 1500L
-        private const val RETRY_DELAY_MS = 2000L
-
-        // How long to wait for onPageFinished after a successful click before
-        // giving up on it and advancing anyway -- see armNavigationTimeout().
-        private const val NAVIGATION_TIMEOUT_MS = 8000L
-
-        // After this many consecutive failed attempts at the same step (an
-        // unexpected interstitial page, most likely), re-login instead of
-        // retrying forever -- see the recovery branch in runCurrentStep().
-        private const val MAX_CONSECUTIVE_FAILURES = 8
     }
 }
