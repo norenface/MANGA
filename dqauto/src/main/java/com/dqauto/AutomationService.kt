@@ -170,7 +170,7 @@ class AutomationService : Service() {
                     val password = prefs.loginPassword
                     if (id != null && password != null) loadLoginUrl(id, password)
                 } else {
-                    updateStatus(getString(R.string.status_link_not_found, step.describe()))
+                    updateStatus(getString(R.string.status_link_not_found_detail, step.describe(), describeFailure(result)))
                     handler.postDelayed({ runCurrentStep() }, RETRY_DELAY_MS)
                 }
             }
@@ -212,6 +212,20 @@ class AutomationService : Service() {
     private fun updateStatus(text: String) {
         lastStatus = text
         onStatusChanged?.invoke(text)
+    }
+
+    /** Turns one of [AutomationStep.SelectThenClick]'s diagnostic result codes
+     *  into a short Japanese phrase for the status line, so a screenshot of
+     *  it pins down exactly which part of the step failed. */
+    private fun describeFailure(result: String?): String {
+        if (result == null) return getString(R.string.failure_reason_unknown)
+        return when {
+            result == "no-button" -> getString(R.string.failure_reason_no_button)
+            result == "no-select" -> getString(R.string.failure_reason_no_select)
+            result.startsWith("no-option:") ->
+                getString(R.string.failure_reason_no_option, result.removePrefix("no-option:"))
+            else -> getString(R.string.failure_reason_unknown)
+        }
     }
 
     private fun buildNotification(): Notification {
@@ -271,7 +285,7 @@ class AutomationService : Service() {
                             var text = (el.innerText || el.value || el.textContent || '').trim();
                             if (text.indexOf(buttonText) !== -1) { btn = el; break; }
                         }
-                        if (!btn) return 'false';
+                        if (!btn) return 'no-button';
 
                         // Walk up from the button to the nearest ancestor that also
                         // contains a <select> -- the dropdown for this same row.
@@ -281,7 +295,7 @@ class AutomationService : Service() {
                             select = container.querySelector('select');
                             container = container.parentElement;
                         }
-                        if (!select) return 'false';
+                        if (!select) return 'no-select';
 
                         var matched = false;
                         for (var j = 0; j < select.options.length; j++) {
@@ -291,7 +305,15 @@ class AutomationService : Service() {
                                 break;
                             }
                         }
-                        if (!matched) return 'false';
+                        if (!matched) {
+                            // Include what the dropdown actually offers, so the app's
+                            // status line can show it verbatim for debugging.
+                            var offered = [];
+                            for (var k = 0; k < select.options.length; k++) {
+                                offered.push(select.options[k].text.trim());
+                            }
+                            return 'no-option:' + offered.join(',');
+                        }
 
                         select.dispatchEvent(new Event('change', { bubbles: true }));
                         btn.click();

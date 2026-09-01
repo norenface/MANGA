@@ -20,9 +20,15 @@
     <string name="status_starting">自動化を開始しました</string>
     <string name="status_stopped">自動化を停止しました</string>
     <string name="status_clicking">「%1$s」を探しています…</string>
-    <string name="status_link_not_found">「%1$s」が見つかりません。再試行します…</string>
+    <string name="status_link_not_found_detail">「%1$s」が見つかりません(%2$s)。再試行します…</string>
     <string name="status_cycle_wait">%1$d周目完了。%2$d秒後に次を開始します…</string>
     <string name="status_recovering">「%1$s」が長時間見つからないため、再ログインします…</string>
+
+    <!-- Failure reason detail (see AutomationStep.SelectThenClick's diagnostic codes) -->
+    <string name="failure_reason_unknown">原因不明</string>
+    <string name="failure_reason_no_button">ボタンが見つかりません</string>
+    <string name="failure_reason_no_select">プルダウンが見つかりません</string>
+    <string name="failure_reason_no_option">選択肢: %1$s</string>
 
     <!-- Background automation notification -->
     <string name="notification_channel_automation">自動化の実行中通知</string>
