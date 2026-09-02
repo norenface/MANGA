@@ -5,29 +5,11 @@
     android:orientation="vertical"
     android:background="@color/bg_primary">
 
-    <WebView
-        android:id="@+id/webView"
+    <FrameLayout
+        android:id="@+id/webViewContainer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/bg_surface"
-        android:padding="4dp"
-        android:text="@string/label_automation_preview"
-        android:textColor="@color/text_secondary"
-        android:textSize="11sp" />
-
-    <ImageView
-        android:id="@+id/ivAutomationPreview"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="#000000"
-        android:contentDescription="@string/label_automation_preview"
-        android:scaleType="fitCenter" />
 
     <TextView
         android:id="@+id/tvStatus"

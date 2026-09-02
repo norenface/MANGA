@@ -6,8 +6,6 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.net.Uri
 import android.os.Binder
 import android.os.Build
@@ -23,13 +21,19 @@ import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 
 /**
- * Runs the login + automation loop in a foreground service, in its own
- * headless [WebView] independent of whatever [MainActivity] shows -- so
- * closing the app, or switching to another one, doesn't stop it. Only
- * running while [isAutomationRunning] is true; started/stopped explicitly
- * from the "自動化を開始/停止" button (see [MainActivity]), not tied to the
- * app's own foreground/background state the way BabyCall's listener
- * service is.
+ * Runs the login + automation loop in a foreground service, in a single
+ * [WebView] instance it owns for its entire lifetime -- so closing the app,
+ * or switching to another one, doesn't stop it. Only running while
+ * [isAutomationRunning] is true; started/stopped explicitly from the
+ * "自動化を開始/停止" button (see [MainActivity]), not tied to the app's own
+ * foreground/background state the way BabyCall's listener service is.
+ *
+ * [MainActivity] shares this same WebView (via [getWebView]) rather than
+ * keeping a separate one, so there is only ever one login session: while the
+ * app is visible the view is attached into the activity's layout (letting the
+ * user look around or act manually between cycles), and [prepareHeadless] is
+ * called when the activity gives it back up so it keeps behaving correctly
+ * detached from any window.
  *
  * A bound [MainActivity] can observe live status text via [onStatusChanged]
  * and read [isAutomationRunning]/[currentStatus] to sync its UI when it
@@ -52,12 +56,6 @@ class AutomationService : Service() {
     private var lastStatus: String = ""
     var onStatusChanged: ((String) -> Unit)? = null
 
-    /** Fired alongside [onStatusChanged] with a snapshot of this service's own
-     *  (otherwise invisible) WebView, so its actual page state -- which can
-     *  differ from whatever the app screen's own separate WebView shows --
-     *  is visible when diagnosing a stuck step. */
-    var onScreenshotChanged: ((Bitmap) -> Unit)? = null
-
     inner class LocalBinder : Binder() {
         fun getService(): AutomationService = this@AutomationService
     }
@@ -76,14 +74,7 @@ class AutomationService : Service() {
         webView = WebView(applicationContext)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
-
-        // Never attached to a window (this is a headless worker), so it needs
-        // an explicit size or some WebView/Chromium internals don't run.
-        val metrics = resources.displayMetrics
-        val widthSpec = View.MeasureSpec.makeMeasureSpec(metrics.widthPixels, View.MeasureSpec.EXACTLY)
-        val heightSpec = View.MeasureSpec.makeMeasureSpec(metrics.heightPixels, View.MeasureSpec.EXACTLY)
-        webView.measure(widthSpec, heightSpec)
-        webView.layout(0, 0, metrics.widthPixels, metrics.heightPixels)
+        prepareHeadless()
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -117,16 +108,29 @@ class AutomationService : Service() {
 
     fun currentStatus(): String = lastStatus
 
-    fun currentScreenshot(): Bitmap? = captureScreenshot()
+    /** The single WebView this service and [MainActivity] share -- see the
+     *  class doc for how attachment is handed back and forth. */
+    fun getWebView(): WebView = webView
 
-    private fun captureScreenshot(): Bitmap? {
-        if (!::webView.isInitialized) return null
-        val width = webView.width
-        val height = webView.height
-        if (width <= 0 || height <= 0) return null
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        webView.draw(Canvas(bitmap))
-        return bitmap
+    /**
+     * Re-applies an explicit size so the WebView keeps behaving correctly
+     * once it's not attached to any window (right after creation, and again
+     * whenever [MainActivity] detaches it from its layout) -- some
+     * WebView/Chromium internals don't run without one.
+     */
+    fun prepareHeadless() {
+        val metrics = resources.displayMetrics
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(metrics.widthPixels, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(metrics.heightPixels, View.MeasureSpec.EXACTLY)
+        webView.measure(widthSpec, heightSpec)
+        webView.layout(0, 0, metrics.widthPixels, metrics.heightPixels)
+    }
+
+    /** Logs the shared WebView into [id]/[password] without touching the
+     *  automation loop's own state, for [MainActivity]'s login dialog to call
+     *  when the user just wants to look around or confirm new credentials. */
+    fun login(id: String, password: String) {
+        loadLoginUrl(id, password)
     }
 
     fun startAutomation() {
@@ -232,7 +236,6 @@ class AutomationService : Service() {
     private fun updateStatus(text: String) {
         lastStatus = text
         onStatusChanged?.invoke(text)
-        captureScreenshot()?.let { onScreenshotChanged?.invoke(it) }
     }
 
     /** Turns one of [AutomationStep.SelectThenClick]'s diagnostic result codes
@@ -273,7 +276,6 @@ class AutomationService : Service() {
         running = false
         handler.removeCallbacksAndMessages(null)
         onStatusChanged = null
-        onScreenshotChanged = null
         webView.destroy()
     }
 

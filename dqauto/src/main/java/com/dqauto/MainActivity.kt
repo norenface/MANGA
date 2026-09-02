@@ -1,18 +1,15 @@
 package com.dqauto
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -21,11 +18,13 @@ import com.dqauto.databinding.ActivityMainBinding
 import com.dqauto.databinding.DialogLoginBinding
 
 /**
- * This screen's own [WebView] is only for logging in and letting the
- * caregiver look around manually -- the actual automation loop runs
- * independently in [AutomationService] (its own separate WebView/session),
- * so it keeps going after this screen is closed or the app is backgrounded.
- * "自動化を開始/停止" starts/stops that service; while bound to it, this
+ * There is only one WebView/login session in this app, owned by
+ * [AutomationService] for its entire lifetime so the automation loop keeps
+ * going after this screen is closed or the app is backgrounded. While this
+ * screen is visible it borrows that same WebView into [ActivityMainBinding.webViewContainer]
+ * (so the caregiver sees exactly what the automation sees, and can act on it
+ * manually between cycles), and hands it back headless in [onStop].
+ * "自動化を開始/停止" starts/stops the service's loop; while bound to it, this
  * screen mirrors its live status text and running state.
  */
 class MainActivity : AppCompatActivity() {
@@ -35,36 +34,48 @@ class MainActivity : AppCompatActivity() {
 
     private var automationService: AutomationService? = null
 
-    /** Set when "start" was tapped before the service finished (re)binding;
-     *  consumed by [onServiceConnected] as soon as it does. */
+    /** Set when "start" was tapped, or new credentials were saved, before the
+     *  service finished (re)binding; consumed by [onServiceConnected] as soon
+     *  as it does. */
     private var pendingStart = false
+    private var pendingLogin: Pair<String, String>? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val bound = (service as AutomationService.LocalBinder).getService()
             automationService = bound
             bound.onStatusChanged = { text -> runOnUiThread { setStatus(text) } }
-            bound.onScreenshotChanged = { bitmap -> runOnUiThread { binding.ivAutomationPreview.setImageBitmap(bitmap) } }
+
+            val webView = bound.getWebView()
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            binding.webViewContainer.removeAllViews()
+            binding.webViewContainer.addView(
+                webView,
+                ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            )
+
+            pendingLogin?.let { (id, password) ->
+                pendingLogin = null
+                bound.login(id, password)
+            }
             if (pendingStart) {
                 pendingStart = false
                 bound.startAutomation()
             }
             setStatus(bound.currentStatus())
-            bound.currentScreenshot()?.let { binding.ivAutomationPreview.setImageBitmap(it) }
             updateToggleButton(bound.isAutomationRunning())
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             automationService?.onStatusChanged = null
-            automationService?.onScreenshotChanged = null
             automationService = null
+            binding.webViewContainer.removeAllViews()
         }
     }
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -78,19 +89,9 @@ class MainActivity : AppCompatActivity() {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        binding.webView.settings.javaScriptEnabled = true
-        binding.webView.settings.domStorageEnabled = true
-        binding.webView.webViewClient = WebViewClient()
-
         binding.btnLoginSettings.setOnClickListener { showLoginDialog() }
         binding.btnToggleAutomation.setOnClickListener { toggleAutomation() }
 
-        // Only log in here when credentials are first entered via the dialog
-        // below (which loads the URL itself right after saving them) -- NOT
-        // on every app open. This screen's WebView shares its cookies with
-        // AutomationService's, so re-logging in here while the background
-        // automation is mid-cycle can invalidate/replace its session out from
-        // under it. The automation preview panel shows its live state instead.
         if (!prefs.hasLogin) {
             showLoginDialog()
         }
@@ -104,21 +105,12 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         automationService?.onStatusChanged = null
-        automationService?.onScreenshotChanged = null
+        automationService?.let { service ->
+            binding.webViewContainer.removeView(service.getWebView())
+            service.prepareHeadless()
+        }
         unbindService(serviceConnection)
         automationService = null
-    }
-
-    private fun loadLoginUrl() {
-        val id = prefs.loginId ?: return
-        val password = prefs.loginPassword ?: return
-        val url = Uri.parse(BASE_URL).buildUpon()
-            .appendQueryParameter("mode", "log_in")
-            .appendQueryParameter("id", id)
-            .appendQueryParameter("pass", password)
-            .build()
-            .toString()
-        binding.webView.loadUrl(url)
     }
 
     private fun showLoginDialog() {
@@ -135,7 +127,12 @@ class MainActivity : AppCompatActivity() {
                 if (id.isNotEmpty() && password.isNotEmpty()) {
                     prefs.loginId = id
                     prefs.loginPassword = password
-                    loadLoginUrl()
+                    val service = automationService
+                    if (service != null) {
+                        service.login(id, password)
+                    } else {
+                        pendingLogin = id to password
+                    }
                 }
             }
             .setNegativeButton(R.string.button_cancel, null)
@@ -177,9 +174,5 @@ class MainActivity : AppCompatActivity() {
 
     private fun setStatus(text: String) {
         if (text.isNotEmpty()) binding.tvStatus.text = text
-    }
-
-    companion object {
-        private const val BASE_URL = "https://app.h3z.jp/games/dqa5/dqadventure5.cgi"
     }
 }

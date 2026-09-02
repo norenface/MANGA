@@ -30,11 +30,6 @@
     <string name="failure_reason_no_select">プルダウンが見つかりません</string>
     <string name="failure_reason_no_option">選択肢: %1$s</string>
 
-    <!-- Preview of the background automation's own (otherwise headless) WebView,
-         so its actual page state is visible even though it's a separate session
-         from this screen's own WebView above. -->
-    <string name="label_automation_preview">バックグラウンド自動化が実際に見ている画面</string>
-
     <!-- Background automation notification -->
     <string name="notification_channel_automation">自動化の実行中通知</string>
     <string name="notification_title">DQ自動周回 実行中</string>
