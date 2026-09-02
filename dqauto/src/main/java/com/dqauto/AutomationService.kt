@@ -442,9 +442,11 @@ class AutomationService : Service() {
         }
 
         /**
-         * On the 作戦変更 (strategy change) page: checks the checkbox next to
-         * [optionText], then clicks the button whose text contains
-         * [buttonText] ("変更するぞ") to submit it.
+         * On the 作戦変更 (strategy change) page: selects the checkbox/radio
+         * button next to [optionText] (the site's own list turned out to use
+         * round radio-style selectors, one per row of a table, rather than
+         * checkboxes -- both are matched here), then clicks the button whose
+         * text contains [buttonText] ("変更するぞ") to submit it.
          */
         data class CheckboxThenClick(val optionText: String, val buttonText: String) : AutomationStep() {
             override fun describe() = "$optionText / $buttonText"
@@ -458,15 +460,22 @@ class AutomationService : Service() {
                         var buttonText = $quotedButtonText;
 
                         var checkbox = null;
-                        var boxes = document.querySelectorAll('input[type="checkbox"]');
+                        var boxes = document.querySelectorAll('input[type="checkbox"], input[type="radio"]');
                         for (var i = 0; i < boxes.length; i++) {
                             var box = boxes[i];
-                            var text = '';
-                            if (box.parentElement) {
-                                text = (box.parentElement.innerText || box.parentElement.textContent || '');
-                            }
-                            if (text.indexOf(optionText) === -1 && box.nextSibling) {
-                                text += (box.nextSibling.textContent || '');
+                            // The label is usually in the same table row (a
+                            // separate cell from the input), so check that
+                            // first; fall back to walking up a few ancestor
+                            // levels in case it's a different layout.
+                            var row = box.closest('tr');
+                            var text = row ? (row.innerText || row.textContent || '') : '';
+                            if (text.indexOf(optionText) === -1) {
+                                var container = box.parentElement;
+                                for (var depth = 0; depth < 4 && container; depth++) {
+                                    text = (container.innerText || container.textContent || '');
+                                    if (text.indexOf(optionText) !== -1) break;
+                                    container = container.parentElement;
+                                }
                             }
                             if (text.indexOf(optionText) !== -1) { checkbox = box; break; }
                         }
@@ -474,6 +483,7 @@ class AutomationService : Service() {
 
                         checkbox.checked = true;
                         checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                        checkbox.dispatchEvent(new Event('click', { bubbles: true }));
 
                         var btn = null;
                         var candidates = document.querySelectorAll('a, input, button');
