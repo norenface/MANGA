@@ -443,10 +443,11 @@ class AutomationService : Service() {
 
         /**
          * On the 作戦変更 (strategy change) page: selects the checkbox/radio
-         * button next to [optionText] (the site's own list turned out to use
-         * round radio-style selectors, one per row of a table, rather than
-         * checkboxes -- both are matched here), then clicks the button whose
-         * text contains [buttonText] ("変更するぞ") to submit it.
+         * button for the row whose label is [optionText] (the site's own
+         * list turned out to use round radio-style selectors, one per row of
+         * a table, rather than checkboxes -- both are matched here), then
+         * clicks the button whose text contains [buttonText] ("変更するぞ")
+         * to submit it.
          */
         data class CheckboxThenClick(val optionText: String, val buttonText: String) : AutomationStep() {
             override fun describe() = "$optionText / $buttonText"
@@ -459,25 +460,42 @@ class AutomationService : Service() {
                         var optionText = $quotedOptionText;
                         var buttonText = $quotedButtonText;
 
-                        var checkbox = null;
-                        var boxes = document.querySelectorAll('input[type="checkbox"], input[type="radio"]');
-                        for (var i = 0; i < boxes.length; i++) {
-                            var box = boxes[i];
-                            // The label is usually in the same table row (a
-                            // separate cell from the input), so check that
-                            // first; fall back to walking up a few ancestor
-                            // levels in case it's a different layout.
-                            var row = box.closest('tr');
-                            var text = row ? (row.innerText || row.textContent || '') : '';
-                            if (text.indexOf(optionText) === -1) {
-                                var container = box.parentElement;
-                                for (var depth = 0; depth < 4 && container; depth++) {
-                                    text = (container.innerText || container.textContent || '');
-                                    if (text.indexOf(optionText) !== -1) break;
-                                    container = container.parentElement;
+                        // Find the option's own label element first (rather
+                        // than starting from every radio/checkbox on the page
+                        // and asking "does some ancestor's text contain
+                        // optionText?") -- with many rows sharing the same
+                        // list container, that ancestor check goes broad
+                        // enough to match almost any row well before it
+                        // narrows down to the right one, so it was grabbing
+                        // the first checkbox in the whole list instead of
+                        // this option's. An element whose OWN trimmed text
+                        // exactly equals optionText stays scoped to just this
+                        // row no matter how big the list is.
+                        var label = null;
+                        var allEls = document.querySelectorAll('*');
+                        for (var i = 0; i < allEls.length; i++) {
+                            if ((allEls[i].textContent || '').trim() === optionText) { label = allEls[i]; break; }
+                        }
+                        if (!label) {
+                            for (var i2 = 0; i2 < allEls.length; i2++) {
+                                var el2 = allEls[i2];
+                                if (el2.children.length === 0 && (el2.textContent || '').indexOf(optionText) !== -1) {
+                                    label = el2;
+                                    break;
                                 }
                             }
-                            if (text.indexOf(optionText) !== -1) { checkbox = box; break; }
+                        }
+                        if (!label) return 'no-checkbox';
+
+                        var row = label.closest('tr');
+                        var checkbox = row ? row.querySelector('input[type="checkbox"], input[type="radio"]') : null;
+                        if (!checkbox) {
+                            var container = label;
+                            for (var depth = 0; depth < 3 && !checkbox; depth++) {
+                                container = container.parentElement;
+                                if (!container) break;
+                                checkbox = container.querySelector('input[type="checkbox"], input[type="radio"]');
+                            }
                         }
                         if (!checkbox) return 'no-checkbox';
 
