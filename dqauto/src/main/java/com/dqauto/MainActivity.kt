@@ -44,16 +44,19 @@ class MainActivity : AppCompatActivity() {
             val bound = (service as AutomationService.LocalBinder).getService()
             automationService = bound
             bound.onStatusChanged = { text -> runOnUiThread { setStatus(text) } }
+            bound.onScreenshotChanged = { bitmap -> runOnUiThread { binding.ivAutomationPreview.setImageBitmap(bitmap) } }
             if (pendingStart) {
                 pendingStart = false
                 bound.startAutomation()
             }
             setStatus(bound.currentStatus())
+            bound.currentScreenshot()?.let { binding.ivAutomationPreview.setImageBitmap(it) }
             updateToggleButton(bound.isAutomationRunning())
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             automationService?.onStatusChanged = null
+            automationService?.onScreenshotChanged = null
             automationService = null
         }
     }
@@ -82,9 +85,13 @@ class MainActivity : AppCompatActivity() {
         binding.btnLoginSettings.setOnClickListener { showLoginDialog() }
         binding.btnToggleAutomation.setOnClickListener { toggleAutomation() }
 
-        if (prefs.hasLogin) {
-            loadLoginUrl()
-        } else {
+        // Only log in here when credentials are first entered via the dialog
+        // below (which loads the URL itself right after saving them) -- NOT
+        // on every app open. This screen's WebView shares its cookies with
+        // AutomationService's, so re-logging in here while the background
+        // automation is mid-cycle can invalidate/replace its session out from
+        // under it. The automation preview panel shows its live state instead.
+        if (!prefs.hasLogin) {
             showLoginDialog()
         }
     }
@@ -97,6 +104,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         automationService?.onStatusChanged = null
+        automationService?.onScreenshotChanged = null
         unbindService(serviceConnection)
         automationService = null
     }

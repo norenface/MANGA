@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.net.Uri
 import android.os.Binder
 import android.os.Build
@@ -49,6 +51,12 @@ class AutomationService : Service() {
 
     private var lastStatus: String = ""
     var onStatusChanged: ((String) -> Unit)? = null
+
+    /** Fired alongside [onStatusChanged] with a snapshot of this service's own
+     *  (otherwise invisible) WebView, so its actual page state -- which can
+     *  differ from whatever the app screen's own separate WebView shows --
+     *  is visible when diagnosing a stuck step. */
+    var onScreenshotChanged: ((Bitmap) -> Unit)? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): AutomationService = this@AutomationService
@@ -108,6 +116,18 @@ class AutomationService : Service() {
     fun isAutomationRunning(): Boolean = running
 
     fun currentStatus(): String = lastStatus
+
+    fun currentScreenshot(): Bitmap? = captureScreenshot()
+
+    private fun captureScreenshot(): Bitmap? {
+        if (!::webView.isInitialized) return null
+        val width = webView.width
+        val height = webView.height
+        if (width <= 0 || height <= 0) return null
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        webView.draw(Canvas(bitmap))
+        return bitmap
+    }
 
     fun startAutomation() {
         if (running) return
@@ -212,6 +232,7 @@ class AutomationService : Service() {
     private fun updateStatus(text: String) {
         lastStatus = text
         onStatusChanged?.invoke(text)
+        captureScreenshot()?.let { onScreenshotChanged?.invoke(it) }
     }
 
     /** Turns one of [AutomationStep.SelectThenClick]'s diagnostic result codes
@@ -252,6 +273,7 @@ class AutomationService : Service() {
         running = false
         handler.removeCallbacksAndMessages(null)
         onStatusChanged = null
+        onScreenshotChanged = null
         webView.destroy()
     }
 
