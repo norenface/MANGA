@@ -175,7 +175,15 @@ class AutomationService : Service() {
             if (!running) return@evaluateJavascript
             // evaluateJavascript returns a JSON-quoted string, e.g. "\"true\"".
             val result = rawResult?.trim('"')
-            if (result == "true") {
+            val skip = step.skipStepsFor(result)
+            if (skip != null) {
+                // This step's action wasn't needed at all (e.g. EnsureStrategy
+                // finding the strategy already correct) -- move past it and
+                // the steps that only make sense following its click, instead
+                // of running them with nothing to act on.
+                consecutiveFailures = 0
+                advanceStep(skip)
+            } else if (result == "true") {
                 consecutiveFailures = 0
                 awaitingNavigation = true
                 armNavigationTimeout()
@@ -219,9 +227,9 @@ class AutomationService : Service() {
         }, NAVIGATION_TIMEOUT_MS)
     }
 
-    private fun advanceStep() {
+    private fun advanceStep(steps: Int = 1) {
         if (!running) return
-        currentStepIndex++
+        currentStepIndex += steps
         if (currentStepIndex >= STEPS.size) {
             currentStepIndex = 0
             cycleCount++
@@ -246,6 +254,7 @@ class AutomationService : Service() {
         return when {
             result == "no-button" -> getString(R.string.failure_reason_no_button)
             result == "no-select" -> getString(R.string.failure_reason_no_select)
+            result == "no-checkbox" -> getString(R.string.failure_reason_no_checkbox)
             result.startsWith("no-option:") ->
                 getString(R.string.failure_reason_no_option, result.removePrefix("no-option:"))
             else -> getString(R.string.failure_reason_unknown)
@@ -284,6 +293,15 @@ class AutomationService : Service() {
 
         abstract fun describe(): String
         abstract fun buildScript(): String
+
+        /**
+         * Returns how many steps (including this one) to advance when
+         * [result] indicates this step's action wasn't needed at all, or
+         * null if [result] is a normal true/false/diagnostic-code outcome.
+         * Only [EnsureStrategy] overrides this, to skip the steps that
+         * follow it purely to act on a click it didn't end up making.
+         */
+        open fun skipStepsFor(result: String?): Int? = null
 
         /**
          * Picks the option containing [optionText] in the `<select>` nearest to
@@ -370,6 +388,108 @@ class AutomationService : Service() {
                 """.trimIndent()
             }
         }
+
+        /**
+         * Checked on the status page: if the currently displayed 作戦 (battle
+         * strategy) already contains [target], nothing needs to happen (this
+         * step, plus the next [CheckboxThenClick] and [ClickText] steps meant
+         * to change it, are all skipped for this cycle). Otherwise clicks the
+         * button whose text contains [changeButtonText] ("作戦変更") to go
+         * change it via those following steps.
+         */
+        data class EnsureStrategy(val target: String, val changeButtonText: String) : AutomationStep() {
+            override fun describe() = "$target ($changeButtonText)"
+
+            override fun skipStepsFor(result: String?): Int? = if (result == "skip") 3 else null
+
+            override fun buildScript(): String {
+                val quotedTarget = JSONObject.quote(target)
+                val quotedButtonText = JSONObject.quote(changeButtonText)
+                return """
+                    (function() {
+                        var target = $quotedTarget;
+                        var buttonText = $quotedButtonText;
+
+                        var btn = null;
+                        var candidates = document.querySelectorAll('a, input, button');
+                        for (var i = 0; i < candidates.length; i++) {
+                            var el = candidates[i];
+                            var text = (el.innerText || el.value || el.textContent || '').trim();
+                            if (text.indexOf(buttonText) !== -1) { btn = el; break; }
+                        }
+                        if (!btn) return 'no-button';
+
+                        // Walk up from the button looking for the nearest
+                        // ancestor whose text names the 作戦 row, then check
+                        // whether it already shows the target strategy.
+                        var container = btn.parentElement;
+                        var alreadySet = false;
+                        for (var depth = 0; depth < 5 && container; depth++) {
+                            var text = (container.innerText || container.textContent || '');
+                            if (text.indexOf('作戦') !== -1) {
+                                alreadySet = text.indexOf(target) !== -1;
+                                break;
+                            }
+                            container = container.parentElement;
+                        }
+                        if (alreadySet) return 'skip';
+
+                        btn.click();
+                        return 'true';
+                    })();
+                """.trimIndent()
+            }
+        }
+
+        /**
+         * On the 作戦変更 (strategy change) page: checks the checkbox next to
+         * [optionText], then clicks the button whose text contains
+         * [buttonText] ("変更するぞ") to submit it.
+         */
+        data class CheckboxThenClick(val optionText: String, val buttonText: String) : AutomationStep() {
+            override fun describe() = "$optionText / $buttonText"
+
+            override fun buildScript(): String {
+                val quotedOptionText = JSONObject.quote(optionText)
+                val quotedButtonText = JSONObject.quote(buttonText)
+                return """
+                    (function() {
+                        var optionText = $quotedOptionText;
+                        var buttonText = $quotedButtonText;
+
+                        var checkbox = null;
+                        var boxes = document.querySelectorAll('input[type="checkbox"]');
+                        for (var i = 0; i < boxes.length; i++) {
+                            var box = boxes[i];
+                            var text = '';
+                            if (box.parentElement) {
+                                text = (box.parentElement.innerText || box.parentElement.textContent || '');
+                            }
+                            if (text.indexOf(optionText) === -1 && box.nextSibling) {
+                                text += (box.nextSibling.textContent || '');
+                            }
+                            if (text.indexOf(optionText) !== -1) { checkbox = box; break; }
+                        }
+                        if (!checkbox) return 'no-checkbox';
+
+                        checkbox.checked = true;
+                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+
+                        var btn = null;
+                        var candidates = document.querySelectorAll('a, input, button');
+                        for (var j = 0; j < candidates.length; j++) {
+                            var el = candidates[j];
+                            var text = (el.innerText || el.value || el.textContent || '').trim();
+                            if (text.indexOf(buttonText) !== -1) { btn = el; break; }
+                        }
+                        if (!btn) return 'no-button';
+
+                        btn.click();
+                        return 'true';
+                    })();
+                """.trimIndent()
+            }
+        }
     }
 
     companion object {
@@ -380,10 +500,17 @@ class AutomationService : Service() {
         // The status page's シングルバトル row: a dropdown of opponents (choose
         // the one containing "アレフガルド") next to a 「モンスターをしばく」
         // button that submits it, then a 「ステータス」 link to come back.
+        // Once back on the status page, EnsureStrategy checks 作戦 (battle
+        // strategy) and, only if it isn't already "どとうのひつじ", clicks
+        // 「作戦変更」 -- CheckboxThenClick and the final ClickText only run in
+        // that case (see AutomationStep.EnsureStrategy.skipStepsFor).
         // Update these if they don't match the site's actual wording.
         private val STEPS: List<AutomationStep> = listOf(
             AutomationStep.SelectThenClick(optionText = "アレフガルド", buttonText = "モンスターをしばく"),
-            AutomationStep.ClickText("ステータス")
+            AutomationStep.ClickText("ステータス"),
+            AutomationStep.EnsureStrategy(target = "どとうのひつじ", changeButtonText = "作戦変更"),
+            AutomationStep.CheckboxThenClick(optionText = "どとうのひつじ", buttonText = "変更するぞ"),
+            AutomationStep.ClickText("ええがな")
         )
 
         private const val STEP_DELAY_MS = 1500L

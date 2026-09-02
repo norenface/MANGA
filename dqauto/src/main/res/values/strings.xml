@@ -28,6 +28,7 @@
     <string name="failure_reason_unknown">原因不明</string>
     <string name="failure_reason_no_button">ボタンが見つかりません</string>
     <string name="failure_reason_no_select">プルダウンが見つかりません</string>
+    <string name="failure_reason_no_checkbox">チェックボックスが見つかりません</string>
     <string name="failure_reason_no_option">選択肢: %1$s</string>
 
     <!-- Background automation notification -->
